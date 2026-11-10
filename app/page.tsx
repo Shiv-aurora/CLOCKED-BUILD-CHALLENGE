@@ -55,13 +55,14 @@ export default function Page() {
   const [audit, setAudit] = useState(false);
   const [focusTest, setFocusTest] = useState<string | null>(null);
   const [toast, setToast] = useState<{ title: string; body: string; tone: "vital" | "alarm" } | null>(null);
-  const [live, setLive] = useState<boolean | null>(null);
+  const [live, setLive] = useState<"live" | "offline" | "recorded" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState(0);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
-    fetch("/api/status").then((r) => r.json()).then((d) => setLive(d.live)).catch(() => setLive(false));
+    if ((globalThis as any).__VS_STATIC__) { setLive("recorded"); return; }
+    fetch("/api/status").then((r) => r.json()).then((d) => setLive(d.live ? "live" : "offline")).catch(() => setLive("offline"));
   }, []);
 
   // animation clock
@@ -242,10 +243,10 @@ export default function Page() {
           <div className="mono text-sm text-slate-300 tabular-nums">{clock(phase === "running" || phase === "done" ? simT : 0)}</div>
           <span className={`mono text-[10px] px-2 py-1 rounded-md border ${statusPill.c}`}>{statusPill.t}</span>
           <span
-            title={live ? "CLOCKED_API_KEY configured: calls go to the live Clocked API" : "No CLOCKED_API_KEY: an offline stand-in emulates the responses"}
-            className={`hidden sm:inline mono text-[10px] px-2 py-1 rounded-md border ${live ? "text-vital border-vital/30" : "text-amberx border-amberx/30"}`}
+            title={live === "live" ? "CLOCKED_API_KEY configured: calls go to the live Clocked API" : live === "recorded" ? "Static demo: the built-in scenarios replay responses recorded from the live Clocked API" : "No CLOCKED_API_KEY: an offline stand-in emulates the responses"}
+            className={`hidden sm:inline mono text-[10px] px-2 py-1 rounded-md border ${live === "live" ? "text-vital border-vital/30" : live === "recorded" ? "text-cyanx border-cyanx/30" : "text-amberx border-amberx/30"}`}
           >
-            CLOCKED · {live === null ? "…" : live ? "LIVE" : "OFFLINE MODE"}
+            CLOCKED · {live === null ? "…" : live === "live" ? "LIVE" : live === "recorded" ? "RECORDED LIVE" : "OFFLINE MODE"}
           </span>
           <button onClick={() => setAudit(true)} className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white px-2 py-1 rounded-md border border-white/10 hover:border-white/25">
             <Terminal size={13} /> API log {calls.length > 0 && <span className="mono text-vital">{calls.length}</span>}

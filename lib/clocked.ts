@@ -3,7 +3,7 @@ import { CATEGORY_LABEL, LABS, TESTS } from "./scenario.ts";
 import type { Category, Conditions, LabId } from "./scenario.ts";
 import type { Authorization, Verdict } from "./engine.ts";
 
-export type Mode = "live" | "emulated";
+export type Mode = "live" | "emulated" | "recorded";
 export interface CallResult<T = any> {
   mode: Mode;
   ms: number;
@@ -13,6 +13,9 @@ export interface CallResult<T = any> {
 }
 
 export async function callClocked<T = any>(endpoint: string, body: unknown, forceEmulated = false): Promise<CallResult<T>> {
+  // Static build (e.g. the hosted artifact): replay recorded live responses, no network, no API key in the page.
+  const staticHook = (globalThis as any).__VS_STATIC__;
+  if (staticHook) return staticHook(endpoint, body);
   const res = await fetch(`/api/clocked/${endpoint}${forceEmulated ? "?mode=emulated" : ""}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -68,6 +68,8 @@ npm run dev                  # http://localhost:3000
 - **With `CLOCKED_API_KEY`:** every call goes to the live Clocked API through the server route `app/api/clocked/[endpoint]`, so the key never reaches the browser. The badges show `LIVE · <ms>`. The **API log** button shows the exact JSON responses that drove the run.
 - **Without a key:** an **offline stand-in** (`lib/emulator.ts`, a transparent keyword heuristic over the same request shapes) keeps the demo reproducible. It is *not* Clocked, and every result it produces is labelled `EMULATED` in the UI.
 
+**Static single-file build:** `npm run record` saves real Clocked responses for the three built-in scenarios to `lib/recorded.json` (run it with the app up and a key set). `npm run build:artifact` then bundles everything into `dist-artifact/vitalswitch.html`. That page needs no server and no key: the built-in scenarios replay the recorded live responses (badge `RECORDED LIVE`), and edited inputs fall back to the labelled stand-in.
+
 Stack: Next.js 15, React 19, Tailwind, Framer Motion. There's no database, and the engine runs in the browser, so re-planning is instant.
 
 ## Project layout

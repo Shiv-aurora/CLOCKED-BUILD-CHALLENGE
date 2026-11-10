@@ -30,12 +30,13 @@ const STEPS: { key: StepKey; name: string; path: string; icon: any; role: string
 export function ModeBadge({ call }: { call?: CallResult }) {
   if (!call) return null;
   const live = call.mode === "live";
+  const rec = call.mode === "recorded";
   return (
     <span
-      title={call.error ?? (live ? "Live Clocked API response" : "Offline stand-in")}
-      className={`mono text-[9px] px-1.5 py-0.5 rounded border ${live ? "border-vital/40 text-vital bg-vital/10" : "border-amberx/40 text-amberx bg-amberx/10"}`}
+      title={call.error ?? (live ? "Live Clocked API response" : rec ? "Real Clocked API response, recorded for this static demo" : "Offline stand-in")}
+      className={`mono text-[9px] px-1.5 py-0.5 rounded border ${live ? "border-vital/40 text-vital bg-vital/10" : rec ? "border-cyanx/40 text-cyanx bg-cyanx/10" : "border-amberx/40 text-amberx bg-amberx/10"}`}
     >
-      {live ? "LIVE" : "EMULATED"} · {call.ms}ms
+      {live ? "LIVE" : rec ? "RECORDED LIVE" : "EMULATED"} · {call.ms}ms
     </span>
   );
 }

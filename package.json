@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "build:artifact": "node scripts/build-artifact.mjs",
+    "record": "node --experimental-strip-types scripts/record-live.ts",
     "test:engine": "node --experimental-strip-types scripts/engine-check.ts"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "autoprefixer": "10.4.20",
+    "esbuild": "^0.24.0",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.19",
     "typescript": "5.7.2"
