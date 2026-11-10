@@ -1,5 +1,6 @@
 "use client";
-import { LABS, WARDS, labById, wardById } from "@/lib/scenario";
+import { motion } from "framer-motion";
+import { labById } from "@/lib/scenario";
 import type { LabId, WardId, Conditions } from "@/lib/scenario";
 import type { TestOutcome } from "@/lib/engine";
 
@@ -11,7 +12,7 @@ export const LAB_COLOR: Record<LabId, string> = {
   reference: "var(--lab-reference)",
 };
 
-type MapMode = "normal" | "stranded" | "plan";
+export type MapMode = "normal" | "stranded" | "plan";
 
 interface Props {
   mode: MapMode;
@@ -25,163 +26,150 @@ interface Props {
   focusTest?: string | null;
 }
 
-const WARD_W = 124, WARD_H = 52, LAB_R = 32;
+// Two-column layout: wards on the left, laboratories on the right.
+const W_X = 8, W_W = 196, L_X = 596, L_W = 236, NODE_H = 74;
+const ROW_Y = [96, 196, 296, 396, 496];
+const LAB_ORDER: LabId[] = ["poc", "west", "core", "stmarys", "reference"];
+const WARD_ORDER: WardId[] = ["ed", "icu", "or", "maternity", "oncology"];
+const WARD_LABEL: Record<WardId, string> = { ed: "Emergency", icu: "Intensive care", or: "Operating theatres", maternity: "Maternity", oncology: "Oncology" };
 
-function anchor(id: WardId | LabId) {
-  const w = WARDS.find((x) => x.id === id);
-  if (w) return { x: w.x - 62 + WARD_W, y: w.y };
-  const l = labById(id as LabId);
-  return { x: l.x, y: l.y };
+const wy = (w: WardId) => ROW_Y[WARD_ORDER.indexOf(w)];
+const ly = (l: LabId) => ROW_Y[LAB_ORDER.indexOf(l)];
+
+function curve(w: WardId, l: LabId) {
+  const wi = WARD_ORDER.indexOf(w), li = LAB_ORDER.indexOf(l);
+  const p0 = { x: W_X + W_W, y: wy(w) + (li - 2) * 6 };
+  const p3 = { x: L_X, y: ly(l) + (wi - 2) * 6 };
+  const dx = (p3.x - p0.x) * 0.5;
+  return { p0, p1: { x: p0.x + dx, y: p0.y }, p2: { x: p3.x - dx, y: p3.y }, p3 };
 }
-function ctrl(a: { x: number; y: number }, b: { x: number; y: number }, bend: number) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  return { x: mx - (dy / len) * bend, y: my + (dx / len) * bend };
+type Curve = ReturnType<typeof curve>;
+function at(c: Curve, t: number) {
+  const u = 1 - t;
+  const f = (k: "x" | "y") => u * u * u * c.p0[k] + 3 * u * u * t * c.p1[k] + 3 * u * t * t * c.p2[k] + t * t * t * c.p3[k];
+  return { x: f("x"), y: f("y") };
 }
-function bez(a: any, c: any, b: any, s: number) {
-  const u = 1 - s;
-  return { x: u * u * a.x + 2 * u * s * c.x + s * s * b.x, y: u * u * a.y + 2 * u * s * c.y + s * s * b.y };
-}
-// trim the curve so it ends at the lab's circle edge, not its centre
-function endAt(a: any, c: any, b: any) {
-  const s = 1 - (LAB_R + 4) / Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
-  return bez(a, c, b, s);
-}
-const BEND: Record<LabId, number> = { core: 14, west: -26, poc: -20, stmarys: 30, reference: -30 };
+const d = (c: Curve) => `M${c.p0.x},${c.p0.y} C${c.p1.x},${c.p1.y} ${c.p2.x},${c.p2.y} ${c.p3.x},${c.p3.y}`;
 
 export default function HospitalMap({ mode, conditions, outcomes, simT, loopT, userDown, interactive, onToggleLab, focusTest }: Props) {
   const down = (id: LabId) => !!conditions?.labDown[id];
   const routes = new Map<string, { ward: WardId; lab: LabId }>();
   if (mode === "plan" && outcomes) for (const o of outcomes) routes.set(`${o.test.ward}-${o.lab}`, { ward: o.test.ward, lab: o.lab });
-  if (mode !== "plan") for (const w of WARDS) routes.set(`${w.id}-core`, { ward: w.id, lab: "core" });
-
-  const wardStats = (wid: WardId) => {
-    const list = outcomes?.filter((o) => o.test.ward === wid) ?? [];
-    if (mode !== "plan") return { waiting: list.length, ok: 0, late: 0 };
-    return {
-      waiting: list.filter((o) => simT < o.finish && !(simT > o.test.deadline)).length,
-      ok: list.filter((o) => simT >= o.finish && o.onTime).length,
-      late: list.filter((o) => (simT >= o.finish && !o.onTime) || (simT > o.test.deadline && simT < o.finish)).length,
-    };
-  };
+  else for (const w of WARD_ORDER) routes.set(`${w}-core`, { ward: w, lab: "core" });
 
   return (
-    <svg viewBox="0 0 1000 600" className="w-full h-auto select-none block" role="img" aria-label="Hospital campus map: wards on the left, laboratories in the centre and right">
-      {/* zones */}
-      <rect x="20" y="16" width="640" height="568" rx="10" style={{ fill: "var(--bg)", stroke: "var(--line)" }} />
-      <text x="40" y="46" fontSize="16" fontWeight="500" style={{ fill: "var(--fg-2)" }}>Northgate General campus</text>
-      <rect x="680" y="16" width="300" height="568" rx="10" style={{ fill: "var(--bg)", stroke: "var(--line)" }} />
-      <text x="700" y="46" fontSize="16" fontWeight="500" style={{ fill: "var(--fg-2)" }}>Partner network</text>
-      <text x="700" y="66" fontSize="14" style={{ fill: "var(--fg-3)" }}>Reached by courier</text>
-
-      {conditions && !conditions.courierAvailable && (
-        <g>
-          <rect x="702" y="544" width="140" height="26" rx="6" style={{ fill: "var(--danger-bg)", stroke: "var(--danger-line)" }} />
-          <text x="772" y="562" textAnchor="middle" fontSize="14" fontWeight="500" style={{ fill: "var(--danger)" }}>Courier stopped</text>
-        </g>
-      )}
+    <svg viewBox="0 0 840 560" className="w-full h-auto block select-none" role="img" aria-label="Wards on the left send blood samples to laboratories on the right">
+      <text x={W_X} y="36" fontSize="16" fontWeight="500" style={{ fill: "var(--fg-3)" }}>Wards</text>
+      <text x={L_X} y="36" fontSize="16" fontWeight="500" style={{ fill: "var(--fg-3)" }}>Laboratories</text>
+      <line x1={L_X - 24} x2={840} y1="346" y2="346" style={{ stroke: "var(--line)" }} strokeDasharray="4 4" />
+      <text x={L_X - 28} y="341" fontSize="14" textAnchor="end" style={{ fill: "var(--fg-3)" }}>On campus ↑</text>
+      <text x={L_X - 28} y="362" fontSize="14" textAnchor="end" style={{ fill: conditions && !conditions.courierAvailable ? "var(--danger)" : "var(--fg-3)" }}>
+        {conditions && !conditions.courierAvailable ? "Courier stopped ↓" : "By courier ↓"}
+      </text>
 
       {/* routes */}
       {[...routes.values()].map(({ ward, lab }) => {
-        const a = anchor(ward), b = anchor(lab);
-        const c = ctrl(a, b, BEND[lab]);
-        const e = endAt(a, c, b);
+        const c = curve(ward, lab);
         const dead = down(lab);
         const color = dead ? "var(--danger)" : mode === "plan" ? LAB_COLOR[lab] : "var(--line-strong)";
         return (
-          <path
-            key={`${ward}-${lab}-${mode}`}
-            d={`M${a.x},${a.y} Q${c.x},${c.y} ${e.x},${e.y}`}
-            fill="none"
-            style={{ stroke: color, opacity: dead ? 0.5 : 1 }}
-            strokeWidth={mode === "plan" ? 1.5 : 1.25}
-            className={dead ? "" : "dash-flow"}
-            strokeDasharray={dead ? "2 4" : undefined}
-          />
-        );
-      })}
-
-      {/* labs */}
-      {LABS.map((l) => {
-        const isDown = down(l.id);
-        const knocked = !!userDown[l.id];
-        const done = outcomes?.filter((o) => o.lab === l.id && simT >= o.finish).length ?? 0;
-        const busy = outcomes?.filter((o) => o.lab === l.id && simT >= o.arrive && simT < o.finish).length ?? 0;
-        const used = mode === "plan" && !!outcomes?.some((o) => o.lab === l.id);
-        const clickable = interactive && l.id !== "core";
-        const status = isDown
-          ? knocked ? "Disabled by you" : l.id === "core" ? "Encrypted, isolated" : "Offline"
-          : mode === "plan" ? (used ? `${busy ? `${busy} running · ` : ""}${done} resulted` : "Not used") : `${l.analyzers} analyzer${l.analyzers > 1 ? "s" : ""}`;
-        return (
-          <g
-            key={l.id}
-            transform={`translate(${l.x},${l.y})`}
-            onClick={() => clickable && onToggleLab?.(l.id)}
-            style={{ cursor: clickable ? "pointer" : "default" }}
-            role={clickable ? "button" : undefined}
-            aria-label={clickable ? `${isDown ? "Restore" : "Disable"} ${l.name}` : undefined}
-          >
-            {clickable && <circle r={LAB_R + 10} style={{ fill: "transparent" }} />}
-            <circle r={LAB_R} strokeWidth={isDown ? 1.5 : used ? 2 : 1}
-              style={{ fill: isDown ? "var(--danger-bg)" : "var(--bg)", stroke: isDown ? "var(--danger)" : used ? LAB_COLOR[l.id] : "var(--line-strong)" }} />
-            <text y="5" textAnchor="middle" fontSize="14" fontWeight="600" className="mono"
-              style={{ fill: isDown ? "var(--danger)" : mode === "plan" && !used ? "var(--fg-3)" : LAB_COLOR[l.id] }}>{l.short}</text>
-            <text y={LAB_R + 22} textAnchor="middle" fontSize="16" fontWeight="500" style={{ fill: "var(--fg)" }}>{l.name}</text>
-            <text y={LAB_R + 41} textAnchor="middle" fontSize="14" style={{ fill: isDown ? "var(--danger)" : "var(--fg-3)" }}>{status}</text>
-          </g>
+          <motion.path key={`${mode}-${ward}-${lab}`} d={d(c)} fill="none" strokeWidth={mode === "plan" ? 2 : 1.5}
+            strokeDasharray={dead ? "4 6" : undefined}
+            style={{ stroke: color, opacity: dead ? 0.6 : mode === "plan" ? 0.75 : 1 }}
+            initial={{ pathLength: mode === "plan" ? 0 : 1 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeInOut" }} />
         );
       })}
 
       {/* wards */}
-      {WARDS.map((w) => {
-        const st = wardStats(w.id);
+      {WARD_ORDER.map((wid) => {
+        const list = outcomes?.filter((o) => o.test.ward === wid) ?? [];
+        const ok = mode === "plan" ? list.filter((o) => simT >= o.finish && o.onTime).length : 0;
+        const late = mode === "plan" ? list.filter((o) => (simT >= o.finish && !o.onTime) || (simT > o.test.deadline && simT < o.finish)).length : 0;
         const stranded = mode === "stranded";
         return (
-          <g key={w.id} transform={`translate(${w.x - 62},${w.y - WARD_H / 2})`}>
-            <rect width={WARD_W} height={WARD_H} rx="6" style={{ fill: "var(--bg)", stroke: stranded ? "var(--danger-line)" : "var(--line-strong)" }} />
-            <text x="12" y="22" fontSize="16" fontWeight="600" style={{ fill: "var(--fg)" }}>{w.short}</text>
-            <text x="12" y="41" fontSize="13.5" style={{ fill: "var(--fg-3)" }}>{w.name.split(" ")[0]}</text>
-            <text x={WARD_W - 10} y="22" textAnchor="end" fontSize="14" className="mono tnum">
-              {st.ok > 0 && <tspan style={{ fill: "var(--ok)" }}>{st.ok}✓ </tspan>}
-              {st.late > 0 && <tspan style={{ fill: "var(--danger)" }}>{st.late}✕ </tspan>}
-              {st.waiting > 0 && <tspan style={{ fill: stranded ? "var(--danger)" : "var(--fg-3)" }}>{st.waiting}</tspan>}
+          <g key={wid} transform={`translate(${W_X},${wy(wid) - NODE_H / 2})`}>
+            <rect width={W_W} height={NODE_H} rx="10" style={{ fill: "var(--bg)", stroke: stranded ? "var(--danger)" : "var(--line-strong)", transition: "stroke .4s" }} />
+            <text x="16" y="31" fontSize="19" fontWeight="600" style={{ fill: "var(--fg)" }}>{WARD_LABEL[wid]}</text>
+            <text x="16" y="56" fontSize="16" className="tnum" style={{ fill: stranded ? "var(--danger)" : "var(--fg-3)" }}>
+              {stranded ? `${list.length} stuck` : mode === "plan" && (ok || late)
+                ? <><tspan style={{ fill: "var(--ok)" }}>{ok} on time</tspan>{late ? <tspan style={{ fill: "var(--danger)" }}>{`  ${late} late`}</tspan> : null}</>
+                : `${list.length} sample${list.length > 1 ? "s" : ""}`}
             </text>
           </g>
         );
       })}
 
-      {/* specimens */}
+      {/* labs */}
+      {LAB_ORDER.map((id) => {
+        const l = labById(id);
+        const isDown = down(id);
+        const knocked = !!userDown[id];
+        const used = mode === "plan" && !!outcomes?.some((o) => o.lab === id);
+        const running = outcomes?.filter((o) => o.lab === id && simT >= o.arrive && simT < o.finish).length ?? 0;
+        const done = outcomes?.filter((o) => o.lab === id && simT >= o.finish).length ?? 0;
+        const clickable = interactive && id !== "core";
+        const sub = isDown
+          ? knocked ? "Turned off by you" : id === "core" ? "Encrypted by ransomware" : "Offline"
+          : mode === "plan"
+            ? used ? (running ? `Testing ${running} now` : done ? `${done} results sent` : "Samples on the way") : "Not needed"
+            : l.kind === "external" ? `${id === "stmarys" ? "18" : "60"} km away` : `${l.analyzers} analyzer${l.analyzers > 1 ? "s" : ""}`;
+        const stroke = isDown ? "var(--danger)" : used ? LAB_COLOR[id] : "var(--line-strong)";
+        return (
+          <g key={id} transform={`translate(${L_X},${ly(id) - NODE_H / 2})`} data-tour={id === "stmarys" ? "lab-stmarys" : undefined}
+            onClick={() => clickable && onToggleLab?.(id)} style={{ cursor: clickable ? "pointer" : "default" }}
+            role={clickable ? "button" : undefined} aria-label={clickable ? `${isDown ? "Turn on" : "Turn off"} ${l.name}` : undefined}>
+            <rect width={L_W} height={NODE_H} rx="10" strokeWidth={used || isDown ? 2 : 1}
+              style={{ fill: isDown ? "var(--danger-bg)" : "var(--bg)", stroke, transition: "fill .4s, stroke .4s" }} />
+            <circle cx="18" cy="25" r="6" style={{ fill: isDown ? "var(--danger)" : LAB_COLOR[id], opacity: mode === "plan" && !used && !isDown ? 0.35 : 1 }} />
+            <text x="34" y="31" fontSize="19" fontWeight="600" style={{ fill: isDown ? "var(--danger)" : mode === "plan" && !used ? "var(--fg-3)" : "var(--fg)" }}>
+              {l.name.replace(" Satellite Lab", " Lab").replace(" Partner Lab", "").replace("Regional ", "").replace("ED Point-of-Care Hub", "Point-of-Care")}
+            </text>
+            <text x="34" y="56" fontSize="16" style={{ fill: isDown ? "var(--danger)" : "var(--fg-3)" }}>{sub}</text>
+            {isDown && (
+              <g transform={`translate(${L_W - 30},14)`}>
+                <rect width="16" height="12" y="8" rx="2" style={{ fill: "var(--danger)" }} />
+                <path d="M3 8 V5 a5 5 0 0 1 10 0 V8" fill="none" strokeWidth="2" style={{ stroke: "var(--danger)" }} />
+              </g>
+            )}
+          </g>
+        );
+      })}
+
+      {/* samples */}
       {outcomes?.map((o, i) => {
-        const ward = wardById(o.test.ward);
-        const a = anchor(o.test.ward), b = anchor(o.lab);
-        const c = ctrl(a, b, BEND[o.lab]);
-        let p = { x: ward.x + 52 - (i % 3) * 10, y: ward.y + 15 };
+        const wi = WARD_ORDER.indexOf(o.test.ward);
+        const k = outcomes.filter((x) => x.test.ward === o.test.ward).indexOf(o);
+        let p = { x: W_X + W_W - 16 - k * 14, y: ROW_Y[wi] + 20 };
         let color = "var(--fg-3)";
-        let r = 4.5;
         if (mode === "normal") {
-          p = bez(a, c, b, (loopT * 0.16 + i * 0.137) % 1);
+          p = at(curve(o.test.ward, "core"), (loopT * 0.14 + i * 0.137) % 1);
           color = "var(--lab-core)";
         } else if (mode === "stranded") {
-          p = { x: ward.x + 52 - (i % 4) * 10, y: ward.y + 15 };
           color = "var(--danger)";
-        } else if (simT < o.dispatch) {
-          color = "var(--fg-3)";
-        } else if (simT < o.arrive) {
-          p = bez(a, c, b, Math.min(1, (simT - o.dispatch) / Math.max(1, o.arrive - o.dispatch)));
+        } else if (simT >= o.dispatch && simT < o.arrive) {
+          p = at(curve(o.test.ward, o.lab), (simT - o.dispatch) / Math.max(1, o.arrive - o.dispatch));
           color = LAB_COLOR[o.lab];
-        } else {
-          const ang = (i / 12) * Math.PI * 2 + (simT < o.finish ? loopT * 0.8 : 0);
-          p = { x: b.x + Math.cos(ang) * (LAB_R + 9), y: b.y + Math.sin(ang) * (LAB_R + 9) };
+        } else if (simT >= o.arrive) {
+          const slot = outcomes.filter((x) => x.lab === o.lab).indexOf(o);
+          p = { x: L_X + L_W - 16 - (slot % 7) * 13, y: ly(o.lab) + 20 };
           color = simT < o.finish ? LAB_COLOR[o.lab] : o.onTime ? "var(--ok)" : "var(--danger)";
         }
+        const r = mode === "stranded" ? 5 * (1 + 0.2 * Math.sin(loopT * 5 + i)) : 5;
         return (
           <g key={o.test.id}>
-            {focusTest === o.test.id && <circle cx={p.x} cy={p.y} r={8} fill="none" style={{ stroke: "var(--fg)" }} />}
+            {focusTest === o.test.id && <circle cx={p.x} cy={p.y} r={10} fill="none" strokeWidth="1.5" style={{ stroke: "var(--fg)" }} />}
             <circle cx={p.x} cy={p.y} r={r} style={{ fill: color }} />
           </g>
         );
       })}
+
+      {mode === "stranded" && (
+        <motion.g initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} style={{ transformOrigin: "406px 285px" }}>
+          <rect x="236" y="250" width="340" height="70" rx="12" style={{ fill: "var(--danger)" }} />
+          <text x="406" y="281" textAnchor="middle" fontSize="20" fontWeight="600" fill="#fff">Ransomware: Core Lab offline</text>
+          <text x="406" y="305" textAnchor="middle" fontSize="15" fill="#fff" opacity="0.85">12 samples have nowhere to go</text>
+        </motion.g>
+      )}
     </svg>
   );
 }

@@ -10,14 +10,15 @@ const res = await build({
   bundle: true,
   minify: true,
   write: false,
+  outdir: "dist-artifact/tmp",
   format: "iife",
   target: "es2020",
   jsx: "automatic",
   define: { "process.env.NODE_ENV": '"production"' },
   logLevel: "error",
 });
-const js = res.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
-const css = readFileSync("dist-artifact/app.css", "utf8");
+const js = res.outputFiles.find((f) => f.path.endsWith(".js")).text.replace(/<\/script/gi, "<\\/script");
+const css = readFileSync("node_modules/driver.js/dist/driver.css", "utf8") + "\n" + readFileSync("dist-artifact/app.css", "utf8");
 const html = `<title>VitalSwitch</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
