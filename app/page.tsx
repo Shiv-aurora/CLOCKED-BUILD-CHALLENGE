@@ -58,6 +58,7 @@ export default function Page() {
   const [live, setLive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState(0);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     fetch("/api/status").then((r) => r.json()).then((d) => setLive(d.live)).catch(() => setLive(false));
@@ -140,7 +141,10 @@ export default function Page() {
     setRunning(null); setError(null); prevPlan.current = null;
   };
 
-  const attack = () => { setPhase("attack"); setSimT(0); };
+  const attack = () => {
+    setFlash(true);
+    setTimeout(() => { setFlash(false); setPhase("attack"); setSimT(0); }, 1500);
+  };
 
   const runAnalysis = useCallback(async () => {
     setPhase("analyzing"); setAnalysis({}); setError(null); prevPlan.current = null;
@@ -207,6 +211,18 @@ export default function Page() {
   return (
     <main className="min-h-screen grid-bg relative">
       {codeRed && <div className="vignette-red" />}
+      <AnimatePresence>
+        {flash && (
+          <motion.div key="flash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-alarm/20 backdrop-blur-[2px] pointer-events-none">
+            <motion.div initial={{ scale: 1.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="text-center glitch">
+              <div className="mono text-[11px] tracking-[0.5em] text-alarm mb-3">INC-7731 · 14:02</div>
+              <div className="text-6xl sm:text-8xl font-black tracking-tight text-white text-glow-alarm">CODE RED</div>
+              <div className="mt-3 text-lg text-red-100/90">Ransomware detected · Core Laboratory offline</div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- header ---------- */}
       <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/80 backdrop-blur-xl">
@@ -359,6 +375,29 @@ export default function Page() {
             </AnimatePresence>
           </section>
         </div>
+
+        {/* ---------- payoff banner ---------- */}
+        <AnimatePresence>
+          {phase === "done" && solved && (
+            <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }}
+              className="mt-4 panel !border-vital/30 px-5 py-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-8 bg-gradient-to-r from-vital/[0.08] to-transparent">
+              <div className="mono text-5xl font-black text-vital text-glow-vital">
+                {solved.opt.result.onTime - solved.base.onTime >= 0 ? "+" : ""}{solved.opt.result.onTime - solved.base.onTime}
+              </div>
+              <div className="flex-1">
+                <div className="text-lg font-semibold text-slate-100">
+                  more urgent results on time during the same outage
+                </div>
+                <div className="text-[12.5px] text-slate-400">
+                  STAT results on time: <span className="text-alarm mono">{solved.base.statOnTime}/{solved.base.statTotal}</span> → <span className="text-vital mono">{solved.opt.result.statOnTime}/{solved.opt.result.statTotal}</span>
+                  {" · "}total lateness: <span className="text-alarm mono">{solved.base.minutesLate} min</span> → <span className="text-vital mono">{solved.opt.result.minutesLate} min</span>
+                  {" · "}computed by simulation, not estimated.
+                </div>
+              </div>
+              <div className="text-[11.5px] text-amberx flex items-center gap-1.5"><Zap size={13} /> Now knock out a backup lab on the map →</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ---------- comparison ---------- */}
         {(phase === "running" || phase === "done") && solved && (
