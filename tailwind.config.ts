@@ -4,16 +4,17 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-sans)", "Geist", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "Geist Mono", "ui-monospace", "monospace"],
       },
       colors: {
-        ink: { 950: "#05070d", 900: "#0a0e18", 850: "#0e1320", 800: "#131a2a", 700: "#1c2538", 600: "#2a3550" },
-        vital: { DEFAULT: "#2ef2b0", dim: "#1aa77a" },
-        alarm: { DEFAULT: "#ff3b4e", dim: "#a51d2b" },
-        amberx: { DEFAULT: "#ffb547" },
-        cyanx: { DEFAULT: "#5cc8ff" },
+        bg: "var(--bg)", subtle: "var(--bg-subtle)", muted: "var(--bg-muted)",
+        line: "var(--line)", strong: "var(--line-strong)",
+        fg: "var(--fg)", fg2: "var(--fg-2)", fg3: "var(--fg-3)",
+        danger: "var(--danger)", "danger-bg": "var(--danger-bg)", "danger-line": "var(--danger-line)",
+        ok: "var(--ok)", "ok-bg": "var(--ok-bg)", warn: "var(--warn)", "warn-bg": "var(--warn-bg)", info: "var(--info)",
       },
+      borderColor: { DEFAULT: "var(--line)" },
     },
   },
   plugins: [],

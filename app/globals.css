@@ -2,63 +2,90 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design system: Geist (vercel.com/geist). Neutral surfaces, hue only for state and data,
+   hairline borders, two radii, no gradients / glows / glass. Light is primary; dark mirrors it. */
 :root {
-  --bg: #05070d;
-  --vital: #2ef2b0;
-  --alarm: #ff3b4e;
+  --bg: #ffffff;
+  --bg-subtle: #fafafa;
+  --bg-muted: #f2f2f2;
+  --line: #ebebeb;
+  --line-strong: #d4d4d4;
+  --fg: #171717;
+  --fg-2: #4d4d4d;
+  --fg-3: #8f8f8f;
+  --on-fg: #ffffff;
+
+  --danger: #d52b2b;
+  --danger-bg: #fdf0f0;
+  --danger-line: #f5c2c2;
+  --ok: #1a7f37;
+  --ok-bg: #edf8f0;
+  --warn: #a35200;
+  --warn-bg: #fff6e5;
+  --info: #0a72ef;
+
+  /* data hues, one per laboratory */
+  --lab-core: #0a72ef;
+  --lab-west: #7c3aed;
+  --lab-poc: #c27a00;
+  --lab-stmarys: #0f8a7d;
+  --lab-reference: #c4318a;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  color-scheme: light;
 }
 
-html, body { background: var(--bg); color: #e6ebf5; }
-body { font-family: var(--font-sans), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-* { scrollbar-width: thin; scrollbar-color: #2a3550 transparent; }
-
-.panel {
-  @apply rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.035] to-white/[0.01] backdrop-blur-xl;
-  box-shadow: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 20px 60px -30px rgba(0,0,0,0.8);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0a0a; --bg-subtle: #111111; --bg-muted: #1a1a1a; --line: #242424; --line-strong: #3a3a3a;
+    --fg: #ededed; --fg-2: #b4b4b4; --fg-3: #7a7a7a; --on-fg: #0a0a0a;
+    --danger: #ff6166; --danger-bg: #2a1213; --danger-line: #5c2427; --ok: #4fc26b; --ok-bg: #0f2216;
+    --warn: #f1a10d; --warn-bg: #2a1d07; --info: #52a8ff;
+    --lab-core: #52a8ff; --lab-west: #a78bfa; --lab-poc: #f1a10d; --lab-stmarys: #2fc4b2; --lab-reference: #f26bb5;
+    color-scheme: dark;
+  }
 }
-.label { @apply text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400; }
-.mono { font-family: var(--font-mono), ui-monospace, monospace; }
-
-.grid-bg {
-  background-image:
-    linear-gradient(rgba(92,200,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(92,200,255,0.05) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-/* Code red vignette */
-.vignette-red {
-  pointer-events: none;
-  position: fixed; inset: 0; z-index: 40;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(255,40,60,0.28) 100%);
-  animation: redpulse 1.6s ease-in-out infinite;
-}
-@keyframes redpulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
-
-.scanlines::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+:root[data-theme="dark"] {
+  --bg: #0a0a0a; --bg-subtle: #111111; --bg-muted: #1a1a1a; --line: #242424; --line-strong: #3a3a3a;
+  --fg: #ededed; --fg-2: #b4b4b4; --fg-3: #7a7a7a; --on-fg: #0a0a0a;
+  --danger: #ff6166; --danger-bg: #2a1213; --danger-line: #5c2427; --ok: #4fc26b; --ok-bg: #0f2216;
+  --warn: #f1a10d; --warn-bg: #2a1d07; --info: #52a8ff;
+  --lab-core: #52a8ff; --lab-west: #a78bfa; --lab-poc: #f1a10d; --lab-stmarys: #2fc4b2; --lab-reference: #f26bb5;
+  color-scheme: dark;
 }
 
-.glitch { animation: glitch 2.2s infinite steps(1); }
-@keyframes glitch {
-  0%, 86%, 100% { transform: translate(0,0); filter: none; }
-  88% { transform: translate(-2px, 1px); filter: hue-rotate(40deg); }
-  90% { transform: translate(2px, -1px); }
-  92% { transform: translate(-1px, 0); filter: saturate(3); }
+html, body { background: var(--bg); color: var(--fg); }
+body {
+  font-family: var(--font-sans), "Geist", system-ui, -apple-system, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01";
 }
+.mono { font-family: var(--font-mono), "Geist Mono", ui-monospace, SFMono-Regular, monospace; }
+.tnum { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-wrap: balance; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; border-radius: 4px; }
 
-.dash-flow { stroke-dasharray: 4 8; animation: dash 1.2s linear infinite; }
-@keyframes dash { to { stroke-dashoffset: -24; } }
+.btn { @apply inline-flex items-center justify-center gap-2 h-9 px-4 text-[14px] font-medium transition-colors; border-radius: var(--radius-sm); }
+.btn-primary { background: var(--fg); color: var(--on-fg); }
+.btn-primary:hover { opacity: .88; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { opacity: .9; }
+.btn-secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--line-strong); }
+.btn-secondary:hover { background: var(--bg-muted); }
+.btn-lg { @apply h-11 text-[15px]; }
 
-.shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-  background-size: 200% 100%; animation: shimmer 1.4s linear infinite;
+.box { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.hair-t { border-top: 1px solid var(--line); }
+.hair-b { border-bottom: 1px solid var(--line); }
+
+.dash-flow { stroke-dasharray: 3 5; animation: dash 1.4s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -16; } }
+
+mark.q { background: var(--danger-bg); color: var(--danger); text-decoration: line-through; border-radius: 3px; padding: 0 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
-@keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
-
-.text-glow-vital { text-shadow: 0 0 24px rgba(46,242,176,0.55); }
-.text-glow-alarm { text-shadow: 0 0 24px rgba(255,59,78,0.6); }
-
-mark.q { background: rgba(255,59,78,0.18); color: #ff9aa5; text-decoration: line-through; text-decoration-color: rgba(255,59,78,.7); border-radius: 3px; padding: 0 2px; }
-mark.pii { background: rgba(92,200,255,0.16); color: #9fdcff; border-radius: 3px; padding: 0 3px; }

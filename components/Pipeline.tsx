@@ -1,6 +1,6 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldAlert, EyeOff, ScanText, Scale, BadgeCheck, Cpu, Loader2, Check } from "lucide-react";
+import { Loader2, Check } from "lucide-react";
 import type { CallResult, GuardOutcome, ProtectOutcome, ExtractOutcome, DecideOutcome, ClaimKey } from "@/lib/clocked";
 import { SITE_CRITERIA } from "@/lib/clocked";
 import type { Authorization } from "@/lib/engine";
@@ -15,60 +15,47 @@ export interface Analysis {
   verify?: { call: CallResult; auth: Authorization; claims: ClaimKey[] };
   optimizer?: { evaluated: number; ms: number };
 }
-
 export type StepKey = keyof Analysis;
 
-const STEPS: { key: StepKey; name: string; path: string; icon: any; role: string }[] = [
-  { key: "guard", name: "Guard", path: "/injection", icon: ShieldAlert, role: "Is anyone trying to hijack the response?" },
-  { key: "protect", name: "Protect", path: "/pii", icon: EyeOff, role: "Strip patient identifiers before anything else reads it" },
-  { key: "extract", name: "Extract", path: "/extract", icon: ScanText, role: "Pull the hard facts: restoration time, affected systems" },
-  { key: "decide", name: "Decide", path: "/decide", icon: Scale, role: "Which sites and transport routes are actually down?" },
-  { key: "verify", name: "Verify", path: "/grounding", icon: BadgeCheck, role: "Which backup routes does the approved procedure allow?" },
-  { key: "optimizer", name: "Continuity engine", path: "local · deterministic", icon: Cpu, role: "Search every legal plan against deadlines & capacity" },
+const STEPS: { key: StepKey; name: string; path: string; role: string }[] = [
+  { key: "guard", name: "Guard", path: "/injection", role: "Checks the notice for instructions planted by the attacker" },
+  { key: "protect", name: "Protect", path: "/pii", role: "Removes patient identifiers before anything else reads it" },
+  { key: "extract", name: "Extract", path: "/extract", role: "Pulls the restoration estimate and affected systems" },
+  { key: "decide", name: "Decide", path: "/decide", role: "Judges which sites and transport routes are down" },
+  { key: "verify", name: "Verify", path: "/grounding", role: "Checks every backup route against the downtime procedure" },
+  { key: "optimizer", name: "Continuity engine", path: "runs locally", role: "Searches legal plans against deadlines and capacity" },
 ];
 
 export function ModeBadge({ call }: { call?: CallResult }) {
   if (!call) return null;
-  const live = call.mode === "live";
-  const rec = call.mode === "recorded";
+  const label = call.mode === "live" ? "Live" : call.mode === "recorded" ? "Recorded live" : "Offline stand-in";
+  const color = call.mode === "emulated" ? "text-warn" : "text-fg3";
   return (
-    <span
-      title={call.error ?? (live ? "Live Clocked API response" : rec ? "Real Clocked API response, recorded for this static demo" : "Offline stand-in")}
-      className={`mono text-[9px] px-1.5 py-0.5 rounded border ${live ? "border-vital/40 text-vital bg-vital/10" : rec ? "border-cyanx/40 text-cyanx bg-cyanx/10" : "border-amberx/40 text-amberx bg-amberx/10"}`}
-    >
-      {live ? "LIVE" : rec ? "RECORDED LIVE" : "EMULATED"} · {call.ms}ms
+    <span title={call.error ?? undefined} className={`text-[12px] tnum ${color}`}>
+      {label} · {call.ms} ms
     </span>
   );
 }
 
+const SITE_LABEL: Record<string, string> = {
+  core_lab: "Core Lab", west_wing_lab: "West Wing Lab", poc_hub: "ED Point-of-Care", st_marys_lab: "St. Mary's",
+  reference_lab: "Reference Lab", courier: "Courier", pneumatic_tube: "Pneumatic tube", lis: "Lab information system",
+};
+
 function Bar({ p, hot, label, uncertain }: { p: number; hot: boolean; label: string; uncertain: boolean }) {
   return (
-    <div className="flex items-center gap-2 text-[11px]">
-      <span className={`w-[118px] truncate ${hot ? "text-alarm" : "text-slate-400"}`}>{label}</span>
-      <div className="relative h-1.5 flex-1 rounded-full bg-white/5 overflow-hidden">
-        <motion.div
-          className={`absolute inset-y-0 left-0 rounded-full ${hot ? "bg-alarm" : "bg-vital/70"}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.max(2, p * 100)}%` }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        />
+    <div className="grid grid-cols-[148px_1fr_44px] items-center gap-3 text-[13px]">
+      <span className={hot ? "text-danger font-medium" : "text-fg2"}>{label}</span>
+      <div className="relative h-1 rounded-full bg-muted overflow-hidden">
+        <motion.div className="absolute inset-y-0 left-0 rounded-full" style={{ background: hot ? "var(--danger)" : "var(--line-strong)" }}
+          initial={{ width: 0 }} animate={{ width: `${Math.max(1, p * 100)}%` }} transition={{ duration: 0.6, ease: "easeOut" }} />
       </div>
-      <span className={`mono w-10 text-right ${hot ? "text-alarm" : "text-slate-500"}`}>{(p * 100).toFixed(0)}%</span>
-      {uncertain && <span className="mono text-[9px] text-amberx">REVIEW</span>}
+      <span className={`text-right tnum ${hot ? "text-danger" : "text-fg3"}`}>
+        {(p * 100).toFixed(0)}%{uncertain ? " ?" : ""}
+      </span>
     </div>
   );
 }
-
-const SITE_LABEL: Record<string, string> = {
-  core_lab: "Core Lab",
-  west_wing_lab: "West Wing Lab",
-  poc_hub: "ED Point-of-Care",
-  st_marys_lab: "St. Mary's",
-  reference_lab: "Reference Lab",
-  courier: "Courier",
-  pneumatic_tube: "Pneumatic tube",
-  lis: "Lab info system",
-};
 
 function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
   if (k === "guard" && a.guard) {
@@ -76,15 +63,15 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
     const bad = g.verdict === "injection";
     return (
       <div className="space-y-2">
-        <div className="flex items-baseline gap-3">
-          <span className={`text-2xl font-bold mono ${bad ? "text-alarm text-glow-alarm" : "text-vital"}`}>{(g.injection * 100).toFixed(1)}%</span>
-          <span className="text-xs text-slate-400">{bad ? `injection · ${g.category} · ${g.severity}` : "injection probability — notice is safe to read"}</span>
-        </div>
+        <p className="text-[13px] text-fg2">
+          <span className={`tnum font-semibold ${bad ? "text-danger" : "text-fg"}`}>{(g.injection * 100).toFixed(1)}%</span> injection probability
+          {bad ? `, ${g.category}, severity ${g.severity}.` : ". The notice is safe to read."}
+        </p>
         {g.quarantined.map((q, i) => (
-          <motion.div key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="rounded-lg border border-alarm/30 bg-alarm/[0.06] p-2 text-[11px] leading-relaxed">
-            <div className="label !text-alarm mb-1">Quarantined before any downstream step</div>
+          <div key={i} className="rounded-md border border-danger-line bg-danger-bg p-3 text-[12.5px] leading-relaxed">
+            <div className="font-medium text-danger mb-1">Removed before any other step reads the notice</div>
             <mark className="q">{q.text}</mark>
-          </motion.div>
+          </div>
         ))}
       </div>
     );
@@ -92,13 +79,12 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
   if (k === "protect" && a.protect) {
     const ents = a.protect.out.entities;
     return (
-      <div className="flex flex-wrap gap-1.5 items-center">
-        <span className="text-xs text-slate-400 mr-1">{ents.length} identifiers removed:</span>
+      <div className="text-[13px] text-fg2">
+        {ents.length} identifiers replaced:{" "}
         {ents.map((e, i) => (
-          <motion.span key={i} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.08 }}
-            className="mono text-[10px] rounded px-1.5 py-0.5 bg-cyanx/10 text-cyanx border border-cyanx/20">
-            <span className="line-through opacity-50 mr-1">{e.value}</span>→ {e.type.toUpperCase()}
-          </motion.span>
+          <span key={i} className="mono text-[12px] text-fg">
+            {i > 0 && ", "}{e.type.replace(/_/g, " ")}
+          </span>
         ))}
       </div>
     );
@@ -106,29 +92,22 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
   if (k === "extract" && a.extract) {
     const e = a.extract.out;
     return (
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-        <span className="text-slate-500">incident</span><span className="mono text-slate-200">{e.incidentId ?? "—"}</span>
-        <span className="text-slate-500">restoration</span>
-        <span className="mono text-slate-200">
-          “{e.restorationText ?? "not stated"}” <span className="text-amberx">→ {Math.round(e.restorationMinutes / 6) / 10} h{e.restorationAssumed ? " (assumed)" : ""}</span>
-        </span>
-        <span className="text-slate-500">affected</span>
-        <span className="flex flex-wrap gap-1">
-          {e.affected.map((x, i) => (
-            <span key={i} className="mono text-[10px] rounded px-1.5 py-0.5 bg-alarm/10 text-alarm/90 border border-alarm/20">{x}</span>
-          ))}
-        </span>
-      </div>
+      <dl className="grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[13px]">
+        <dt className="text-fg3">Incident</dt><dd className="mono text-[12.5px]">{e.incidentId ?? "Not stated"}</dd>
+        <dt className="text-fg3">Restoration</dt>
+        <dd>“{e.restorationText ?? "not stated"}” <span className="text-fg3">→ {Math.round(e.restorationMinutes / 6) / 10} h{e.restorationAssumed ? ", assumed" : ""}</span></dd>
+        <dt className="text-fg3">Affected</dt><dd className="text-fg2">{e.affected.join("; ") || "None stated"}</dd>
+      </dl>
     );
   }
   if (k === "decide" && a.decide) {
     const d = a.decide.out;
     return (
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {Object.keys(SITE_CRITERIA).map((key) => (
           <Bar key={key} label={SITE_LABEL[key]} p={d.probs[key] ?? 0} hot={d.selected.includes(key)} uncertain={d.uncertain.includes(key)} />
         ))}
-        {d.severityLabel && <div className="text-[11px] text-slate-400 pt-1">severity → <span className="text-amberx">{d.severityLabel}</span></div>}
+        <p className="text-[12px] text-fg3 pt-1">Probability each is unavailable. Red means treated as down; “?” marks a value sent for human review.</p>
       </div>
     );
   }
@@ -137,34 +116,24 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
     const labs = LABS.filter((l) => l.kind !== "primary");
     return (
       <div className="overflow-x-auto">
-        <table className="text-[10px] mono">
+        <table className="text-[12px] border-collapse">
           <thead>
             <tr>
               <th />
-              {cats.map((c) => (
-                <th key={c} className="px-1 pb-1 font-normal text-slate-500 text-left" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>{CATEGORY_LABEL[c]}</th>
-              ))}
+              {cats.map((c) => <th key={c} className="px-1.5 pb-1 font-normal text-fg3 text-left whitespace-nowrap">{CATEGORY_LABEL[c]}</th>)}
             </tr>
           </thead>
           <tbody>
-            {labs.map((l, li) => (
-              <tr key={l.id}>
-                <td className="pr-2 text-slate-400 whitespace-nowrap">{l.short}</td>
-                {cats.map((c, ci) => {
+            {labs.map((l) => (
+              <tr key={l.id} className="hair-t">
+                <td className="pr-3 py-1 text-fg2 whitespace-nowrap">{l.name.replace(" Satellite Lab", "").replace(" Partner Lab", "").replace(" Reference Lab", " Reference").replace("ED Point-of-Care Hub", "Point-of-Care")}</td>
+                {cats.map((c) => {
                   const cell = a.verify!.auth[l.id]?.[c];
-                  const sym = !cell ? "·" : cell.verdict === "supported" ? "✓" : cell.verdict === "contradicted" ? "✕" : "?";
-                  const cls = !cell ? "text-slate-700" : cell.verdict === "supported" ? "text-vital bg-vital/10" : cell.verdict === "contradicted" ? "text-alarm bg-alarm/10" : "text-amberx bg-amberx/10";
+                  const [sym, cls] = !cell ? ["", "text-fg3"] : cell.verdict === "supported" ? ["Yes", "text-ok"] : cell.verdict === "contradicted" ? ["No", "text-danger"] : ["?", "text-warn"];
                   return (
-                    <td key={c} className="p-0.5">
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: (li * cats.length + ci) * 0.025 }}
-                        title={cell ? `${cell.verdict} (${(cell.supported * 100).toFixed(0)}% supported)${cell.quote ? `\n“${cell.quote}”` : ""}` : "site cannot run this test"}
-                        className={`w-6 h-6 rounded flex items-center justify-center ${cls}`}
-                      >
-                        {sym}
-                      </motion.div>
+                    <td key={c} className={`px-1.5 py-1 font-medium ${cls}`}
+                      title={cell ? `${cell.verdict.replace("_", " ")}, ${(cell.supported * 100).toFixed(0)}% supported${cell.quote ? `\n“${cell.quote}”` : ""}` : "This site can't run this test"}>
+                      {sym || <span className="text-fg3">–</span>}
                     </td>
                   );
                 })}
@@ -172,16 +141,16 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
             ))}
           </tbody>
         </table>
-        <div className="text-[10px] text-slate-500 mt-1">✓ procedure approves · ✕ procedure forbids · ? not stated (treated as forbidden) · hover for evidence</div>
+        <p className="text-[12px] text-fg3 mt-2">Yes: procedure approves. No: procedure forbids. ?: not stated, treated as forbidden. Hover a cell for the quoted evidence.</p>
       </div>
     );
   }
   if (k === "optimizer" && a.optimizer) {
     return (
-      <div className="text-[11px] text-slate-300">
-        Simulated <span className="mono text-vital">{a.optimizer.evaluated.toLocaleString()}</span> candidate plans in{" "}
-        <span className="mono text-vital">{a.optimizer.ms.toFixed(0)} ms</span> — every assignment respects capacity, transport and the verified procedure.
-      </div>
+      <p className="text-[13px] text-fg2">
+        Simulated <span className="tnum text-fg font-medium">{a.optimizer.evaluated.toLocaleString()}</span> candidate plans in{" "}
+        <span className="tnum text-fg font-medium">{a.optimizer.ms.toFixed(0)} ms</span>. Every assignment respects capacity, transport and the verified procedure.
+      </p>
     );
   }
   return null;
@@ -189,50 +158,35 @@ function StepBody({ k, a }: { k: StepKey; a: Analysis }) {
 
 export default function Pipeline({ analysis, running }: { analysis: Analysis; running: StepKey | null }) {
   return (
-    <div className="space-y-2">
+    <ol className="divide-y divide-[var(--line)]">
       {STEPS.map((s, i) => {
         const done = !!analysis[s.key];
         const active = running === s.key;
-        const Icon = s.icon;
-        if (!done && !active) {
-          return (
-            <div key={s.key} className="flex items-center gap-3 rounded-xl border border-white/5 px-3 py-2 opacity-35">
-              <Icon size={15} className="text-slate-500" />
-              <span className="text-xs text-slate-400">{s.name}</span>
-              <span className="mono text-[10px] text-slate-600">{s.path}</span>
-            </div>
-          );
-        }
+        const pending = !done && !active;
         return (
-          <motion.div
-            key={s.key}
-            layout
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`relative rounded-xl border px-3 py-2.5 overflow-hidden ${active ? "border-cyanx/40 bg-cyanx/[0.04]" : "border-white/[0.08] bg-white/[0.02]"}`}
-          >
-            {active && <div className="absolute inset-0 shimmer pointer-events-none" />}
-            <div className="flex items-center gap-2.5">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${done ? "bg-vital/15 text-vital" : "bg-cyanx/15 text-cyanx"}`}>
-                {active ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}
-              </div>
-              <span className="text-[13px] font-semibold text-slate-100">{s.name}</span>
-              <span className="mono text-[10px] text-slate-500">{s.path}</span>
-              <span className="flex-1" />
-              {s.key !== "optimizer" && <ModeBadge call={(analysis[s.key] as any)?.call} />}
-              {done && <Check size={14} className="text-vital" />}
+          <li key={s.key} className={`py-3.5 grid grid-cols-[24px_1fr] gap-x-3 ${pending ? "opacity-40" : ""}`}>
+            <div className="pt-0.5">
+              {active ? <Loader2 size={16} className="animate-spin text-fg2" /> : done ? <Check size={16} className="text-ok" /> : <span className="text-[13px] text-fg3 tnum">{i + 1}</span>}
             </div>
-            <div className="text-[11px] text-slate-500 ml-[34px] -mt-0.5">{s.role}</div>
-            <AnimatePresence>
-              {done && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="ml-[34px] mt-2">
-                  <StepBody k={s.key} a={analysis} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-[14px] font-medium">{s.name}</span>
+                <span className="mono text-[12px] text-fg3">{s.path}</span>
+                <span className="flex-1" />
+                {s.key !== "optimizer" && <ModeBadge call={(analysis[s.key] as any)?.call} />}
+              </div>
+              <div className="text-[13px] text-fg3">{s.role}</div>
+              <AnimatePresence>
+                {done && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-2.5">
+                    <StepBody k={s.key} a={analysis} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }

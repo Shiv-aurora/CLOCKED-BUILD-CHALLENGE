@@ -1,16 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Activity, AlertTriangle, ShieldCheck, Play, RotateCcw, FileText, Pencil, X, Zap, CheckCircle2, Terminal, Truck, Info, ChevronRight,
-} from "lucide-react";
+import { RotateCcw, X, Check, ChevronRight, Play } from "lucide-react";
 import HospitalMap, { LAB_COLOR } from "@/components/HospitalMap";
 import Pipeline, { Analysis, StepKey, ModeBadge } from "@/components/Pipeline";
 import Gantt from "@/components/Gantt";
 import { ConstraintStrip, EventFeed } from "@/components/Feed";
-import {
-  DEFAULT_PLAYBOOK, INCIDENT_PRESETS, LABS, PRIORITY_LABEL, TESTS, labById, wardById, CATEGORY_LABEL,
-} from "@/lib/scenario";
+import { DEFAULT_PLAYBOOK, INCIDENT_PRESETS, LABS, TESTS, labById, wardById } from "@/lib/scenario";
 import type { Conditions, LabId } from "@/lib/scenario";
 import {
   callClocked, guardRequest, interpretGuard, protectRequest, interpretProtect, extractRequest, interpretExtract,
@@ -30,13 +26,21 @@ const NORMAL_COND: Conditions = {
 };
 const NORMAL_OUTCOMES = simulate(TESTS.map((t) => ({ testId: t.id, dest: "core", dispatch: 0 }) as Assignment), NORMAL_COND).outcomes;
 
-const CAPTION: Record<Phase, { tag: string; text: string }> = {
-  normal: { tag: "SCENE 1 · NORMAL OPERATIONS", text: "12 urgent blood tests are on their way to the Core Lab. Every dot is a patient's specimen." },
-  attack: { tag: "SCENE 2 · CODE RED", text: "Ransomware just encrypted the Core Lab. Twelve urgent tests now have nowhere to go." },
-  analyzing: { tag: "SCENE 3 · VITALSWITCH INTERVENES", text: "Clocked reads the incident and the downtime procedure; the engine turns its answers into hard constraints." },
-  plan: { tag: "SCENE 3 · HUMAN IN THE LOOP", text: "A verified continuity plan is ready. Nothing moves until the coordinator approves." },
-  running: { tag: "SCENE 4 · THE PAYOFF", text: "Same outage. Same twelve tests. The only difference is the plan." },
-  done: { tag: "SCENE 5 · PROVE IT ISN'T SCRIPTED", text: "Click any backup lab on the map to knock it out. VitalSwitch re-plans instantly." },
+const STEPS: { label: string; phases: Phase[] }[] = [
+  { label: "Normal operations", phases: ["normal"] },
+  { label: "Cyberattack", phases: ["attack"] },
+  { label: "Clocked analysis", phases: ["analyzing"] },
+  { label: "Approval", phases: ["plan"] },
+  { label: "Outcome", phases: ["running", "done"] },
+];
+
+const HEADLINE: Record<Phase, { title: string; sub: string }> = {
+  normal: { title: "Twelve urgent blood tests are on their way to the Core Lab", sub: "Each dot on the map is a patient's specimen. Pick a scenario, then start the attack." },
+  attack: { title: "Ransomware has taken the Core Lab offline", sub: "The specimens have nowhere to go. This is now a patient-care problem, not only an IT one." },
+  analyzing: { title: "VitalSwitch is reading the incident with Clocked", sub: "Each answer becomes a hard constraint for the continuity engine." },
+  plan: { title: "A verified continuity plan is ready for approval", sub: "Nothing moves until the lab downtime coordinator signs off." },
+  running: { title: "Same outage, same tests, two different plans", sub: "Left: the usual manual response. Right: the approved VitalSwitch plan." },
+  done: { title: "Same outage, same tests, two different plans", sub: "Now disable a backup lab on the map. VitalSwitch re-plans from scratch." },
 };
 
 export default function Page() {
@@ -54,7 +58,7 @@ export default function Page() {
   const [editor, setEditor] = useState(false);
   const [audit, setAudit] = useState(false);
   const [focusTest, setFocusTest] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ title: string; body: string; tone: "vital" | "alarm" } | null>(null);
+  const [toast, setToast] = useState<{ title: string; body: string; tone: "ok" | "danger" } | null>(null);
   const [live, setLive] = useState<"live" | "offline" | "recorded" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState(0);
@@ -110,7 +114,7 @@ export default function Page() {
     return { opt, base, ms };
   }, [conditions, analysis.verify]);
 
-  // plan-diff toast for Scene 5
+  // plan-diff toast when the judge removes resources
   const prevPlan = useRef<{ assignments: Assignment[]; onTime: number } | null>(null);
   useEffect(() => {
     if (!solved) return;
@@ -119,9 +123,9 @@ export default function Page() {
       const moved = solved.opt.assignments.filter((a) => prev.assignments.find((p) => p.testId === a.testId)?.dest !== a.dest).length;
       const d = solved.opt.result.onTime - prev.onTime;
       setToast({
-        title: moved ? `Re-planned · ${moved} specimen${moved > 1 ? "s" : ""} rerouted` : "Re-planned · routing unchanged",
-        body: `On-time results ${prev.onTime} → ${solved.opt.result.onTime}${d < 0 ? " — fewer resources, honestly worse." : d > 0 ? " — capacity restored." : "."} ${solved.opt.evaluated.toLocaleString()} plans re-evaluated in ${solved.ms.toFixed(0)} ms.`,
-        tone: d < 0 ? "alarm" : "vital",
+        title: moved ? `Re-planned: ${moved} specimen${moved > 1 ? "s" : ""} rerouted` : "Re-planned: routing unchanged",
+        body: `On time ${prev.onTime} → ${solved.opt.result.onTime} of 12${d < 0 ? ". Fewer resources, so the outcome is worse." : d > 0 ? ". Capacity restored." : "."} ${solved.opt.evaluated.toLocaleString()} plans re-evaluated in ${solved.ms.toFixed(0)} ms.`,
+        tone: d < 0 ? "danger" : "ok",
       });
       if (phase === "done") { setSimT(0); setPlaying(true); setPhase("running"); }
     }
@@ -136,15 +140,13 @@ export default function Page() {
     setPresetId(id);
     setReport(p.text);
   };
-
   const reset = () => {
     setPhase("normal"); setAnalysis({}); setUserDown({}); setCourierStrike(false); setSimT(0); setPlaying(false);
     setRunning(null); setError(null); prevPlan.current = null;
   };
-
   const attack = () => {
     setFlash(true);
-    setTimeout(() => { setFlash(false); setPhase("attack"); setSimT(0); }, 1500);
+    setTimeout(() => { setFlash(false); setPhase("attack"); setSimT(0); }, 1400);
   };
 
   const runAnalysis = useCallback(async () => {
@@ -199,238 +201,231 @@ export default function Page() {
   // ---------- view helpers ----------
   const mapMode = phase === "normal" ? "normal" : phase === "attack" || phase === "analyzing" ? "stranded" : "plan";
   const mapOutcomes: TestOutcome[] | null = mapMode === "plan" ? solved?.opt.result.outcomes ?? null : NORMAL_OUTCOMES;
-  const mapCond: Conditions | null = phase === "normal" ? NORMAL_COND : conditions ?? (phase === "attack" || phase === "analyzing" ? { ...NORMAL_COND, labDown: { ...NORMAL_COND.labDown, core: true } } : null);
-  const statusPill = phase === "normal"
-    ? { t: "ALL SYSTEMS NORMAL", c: "text-vital border-vital/30 bg-vital/10" }
-    : phase === "attack" || phase === "analyzing"
-      ? { t: "CODE RED · LAB OFFLINE", c: "text-alarm border-alarm/40 bg-alarm/10 animate-pulse" }
-      : { t: "CONTINUITY PLAN ACTIVE", c: "text-amberx border-amberx/30 bg-amberx/10" };
+  const mapCond: Conditions | null = phase === "normal" ? NORMAL_COND : conditions ?? { ...NORMAL_COND, labDown: { ...NORMAL_COND.labDown, core: true } };
+  const codeRed = phase === "attack" || phase === "analyzing";
+  const postPlan = phase === "plan" || phase === "running" || phase === "done";
+  const status = phase === "normal"
+    ? { text: "All systems normal", color: "var(--ok)" }
+    : codeRed ? { text: "Code red: Core Lab offline", color: "var(--danger)" } : { text: "Continuity plan active", color: "var(--warn)" };
   const calls = (["guard", "protect", "extract", "decide", "verify"] as const).map((k) => ({ k, v: analysis[k] as any })).filter((x) => x.v);
   const anyEmulated = calls.some((c) => c.v.call.mode === "emulated");
-  const codeRed = phase === "attack" || phase === "analyzing";
+  const stepIdx = STEPS.findIndex((s) => s.phases.includes(phase));
+  const clocked = live === "live" ? "Clocked: live" : live === "recorded" ? "Clocked: recorded live responses" : live === "offline" ? "Clocked: offline stand-in" : "";
 
   return (
-    <main className="min-h-screen grid-bg relative">
-      {codeRed && <div className="vignette-red" />}
-      <AnimatePresence>
-        {flash && (
-          <motion.div key="flash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-alarm/20 backdrop-blur-[2px] pointer-events-none">
-            <motion.div initial={{ scale: 1.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="text-center glitch">
-              <div className="mono text-[11px] tracking-[0.5em] text-alarm mb-3">INC-7731 · 14:02</div>
-              <div className="text-6xl sm:text-8xl font-black tracking-tight text-white text-glow-alarm">CODE RED</div>
-              <div className="mt-3 text-lg text-red-100/90">Ransomware detected · Core Laboratory offline</div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <main className="min-h-screen bg-bg">
       {/* ---------- header ---------- */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/80 backdrop-blur-xl">
-        <div className="max-w-[1500px] mx-auto px-4 lg:px-6 h-14 flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="relative w-8 h-8 rounded-lg bg-vital/10 border border-vital/30 flex items-center justify-center">
-              <Activity size={17} className="text-vital" />
-            </div>
-            <div className="leading-tight">
-              <div className="font-bold tracking-tight">Vital<span className="text-vital">Switch</span></div>
-              <div className="text-[10px] text-slate-500 hidden sm:block">Clinical continuity during cyberattacks</div>
-            </div>
+      <header className="sticky top-0 z-30 bg-bg hair-b">
+        <div className="max-w-[1320px] mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">
+          <div className="flex items-baseline gap-3 min-w-0">
+            <span className="text-[16px] font-semibold tracking-tight">VitalSwitch</span>
+            <span className="hidden md:inline text-[13px] text-fg3 truncate">Northgate General, a synthetic hospital</span>
           </div>
-          <div className="hidden md:block h-6 w-px bg-white/10" />
-          <div className="hidden md:block text-[11px] text-slate-400">Northgate General <span className="text-slate-600">· synthetic hospital</span></div>
           <div className="flex-1" />
-          <div className="mono text-sm text-slate-300 tabular-nums">{clock(phase === "running" || phase === "done" ? simT : 0)}</div>
-          <span className={`mono text-[10px] px-2 py-1 rounded-md border ${statusPill.c}`}>{statusPill.t}</span>
-          <span
-            title={live === "live" ? "CLOCKED_API_KEY configured: calls go to the live Clocked API" : live === "recorded" ? "Static demo: the built-in scenarios replay responses recorded from the live Clocked API" : "No CLOCKED_API_KEY: an offline stand-in emulates the responses"}
-            className={`hidden sm:inline mono text-[10px] px-2 py-1 rounded-md border ${live === "live" ? "text-vital border-vital/30" : live === "recorded" ? "text-cyanx border-cyanx/30" : "text-amberx border-amberx/30"}`}
-          >
-            CLOCKED · {live === null ? "…" : live === "live" ? "LIVE" : live === "recorded" ? "RECORDED LIVE" : "OFFLINE MODE"}
+          <span className="hidden sm:flex items-center gap-2 text-[13px] font-medium" style={{ color: status.color }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: status.color }} />{status.text}
           </span>
-          <button onClick={() => setAudit(true)} className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white px-2 py-1 rounded-md border border-white/10 hover:border-white/25">
-            <Terminal size={13} /> API log {calls.length > 0 && <span className="mono text-vital">{calls.length}</span>}
+          <span className="hidden lg:inline text-[13px] text-fg3" title={live === "recorded" ? "The built-in scenarios replay responses recorded from the live Clocked API. Edited inputs use the offline stand-in." : undefined}>{clocked}</span>
+          <button onClick={() => setAudit(true)} className="btn btn-secondary !h-8 !px-3 !text-[13px]">
+            API log{calls.length > 0 && <span className="text-fg3 tnum">{calls.length}</span>}
           </button>
-          <button onClick={reset} title="Reset" className="p-1.5 rounded-md border border-white/10 text-slate-400 hover:text-white"><RotateCcw size={14} /></button>
+          <button onClick={reset} aria-label="Start over" title="Start over" className="btn btn-secondary !h-8 !w-8 !p-0"><RotateCcw size={14} /></button>
         </div>
       </header>
 
-      <div className="max-w-[1500px] mx-auto px-4 lg:px-6 py-5">
-        {/* ---------- narrative caption ---------- */}
+      <div className="max-w-[1320px] mx-auto px-4 sm:px-6 pt-6 pb-16">
+        {/* ---------- steps ---------- */}
+        <ol className="flex flex-wrap gap-x-6 gap-y-2 text-[13px]" aria-label="Demo steps">
+          {STEPS.map((s, i) => (
+            <li key={s.label} className={`flex items-center gap-2 ${i === stepIdx ? "text-fg font-medium" : "text-fg3"}`} aria-current={i === stepIdx ? "step" : undefined}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] tnum border ${i === stepIdx ? "border-fg bg-fg text-[var(--on-fg)]" : "border-strong"}`}>
+                {i < stepIdx ? <Check size={11} /> : i + 1}
+              </span>
+              {s.label}
+            </li>
+          ))}
+        </ol>
+
         <AnimatePresence mode="wait">
-          <motion.div key={phase} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="mb-4 flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4">
-            <span className={`mono text-[10px] tracking-[0.2em] ${codeRed ? "text-alarm" : phase === "normal" ? "text-cyanx" : "text-vital"}`}>{CAPTION[phase].tag}</span>
-            <span className="text-lg sm:text-xl font-semibold tracking-tight text-slate-100">{CAPTION[phase].text}</span>
+          <motion.div key={phase === "done" ? "running" : phase} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="mt-8 mb-8">
+            <h1 className={`text-[28px] sm:text-[32px] leading-tight font-semibold tracking-[-0.02em] ${codeRed ? "text-danger" : ""}`}>{HEADLINE[phase].title}</h1>
+            <p className="text-[15px] text-fg2 mt-2 max-w-[65ch]">{HEADLINE[phase].sub}</p>
           </motion.div>
         </AnimatePresence>
 
-        <div className="grid lg:grid-cols-[1.4fr_1fr] gap-4">
-          {/* ---------- map ---------- */}
-          <section className={`panel p-3 relative scanlines ${codeRed ? "!border-alarm/30" : ""}`}>
-            <HospitalMap
-              mode={mapMode}
-              conditions={mapCond}
-              outcomes={mapOutcomes}
-              simT={simT}
-              loopT={loopT}
-              userDown={userDown}
-              interactive={phase === "done" || phase === "plan" || phase === "running"}
-              onToggleLab={toggleLab}
-              focusTest={focusTest}
-            />
-            <div className="flex flex-wrap gap-x-4 gap-y-1 px-2 pb-1 text-[10px] text-slate-500">
+        <div className="grid lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] gap-8 items-start">
+          {/* ---------- map column ---------- */}
+          <section className={`box overflow-hidden min-w-0 lg:sticky lg:top-[72px] ${codeRed ? "!border-[var(--danger-line)]" : ""}`}>
+            <div className="bg-subtle p-3">
+              <HospitalMap mode={mapMode} conditions={mapCond} outcomes={mapOutcomes} simT={simT} loopT={loopT} userDown={userDown}
+                interactive={postPlan} onToggleLab={toggleLab} focusTest={focusTest} />
+            </div>
+            <div className="hair-t px-5 py-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px] text-fg2">
               {LABS.map((l) => (
                 <span key={l.id} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: LAB_COLOR[l.id] }} />{l.name}</span>
               ))}
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#ff6b7a]" />STAT specimen</span>
+              {postPlan && <span className="text-fg3">Select a backup lab on the map to disable it</span>}
             </div>
-            {(phase === "plan" || phase === "running" || phase === "done") && conditions && (
-              <div className="mx-2 mt-3 pt-3 border-t border-white/[0.06] space-y-3">
-                <div>
-                  <div className="label mb-1.5">Constraints Clocked established</div>
+            {postPlan && conditions && (
+              <div className="hair-t px-5 py-5 grid md:grid-cols-2 gap-8">
+                <div className="min-w-0">
+                  <h2 className="text-[14px] font-medium mb-2">What Clocked established</h2>
                   <ConstraintStrip analysis={analysis} conditions={conditions} />
                 </div>
-                {solved && phase !== "plan" && (
-                  <div>
-                    <div className="label mb-1.5">Live event feed</div>
-                    <EventFeed plan={solved.opt.result} base={solved.base} simT={simT} />
-                  </div>
-                )}
-              </div>
-            )}
-            {(phase === "plan" || phase === "done" || phase === "running") && (
-              <div className="absolute top-5 right-5 flex items-center gap-2 text-[10.5px] text-slate-300 bg-ink-900/90 border border-white/10 rounded-lg px-2.5 py-1.5">
-                <Zap size={12} className="text-amberx" /> Click a backup lab to knock it out
+                <div className="min-w-0">
+                  <h2 className="text-[14px] font-medium mb-2">Event log</h2>
+                  {solved && <EventFeed plan={solved.opt.result} base={solved.base} simT={phase === "plan" ? 0 : simT} />}
+                </div>
               </div>
             )}
           </section>
 
           {/* ---------- right column ---------- */}
-          <section className="flex flex-col gap-4 min-w-0">
+          <section className="min-w-0">
             <AnimatePresence mode="wait">
               {phase === "normal" && (
-                <motion.div key="normal" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} className="panel p-4 space-y-4">
+                <motion.div key="normal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
                   <div>
-                    <div className="label mb-2">Choose the attack</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {INCIDENT_PRESETS.map((p) => (
-                        <button key={p.id} onClick={() => pickPreset(p.id)}
-                          className={`text-left rounded-xl border p-2.5 transition ${presetId === p.id ? "border-alarm/50 bg-alarm/[0.07]" : "border-white/[0.08] hover:border-white/20"}`}>
-                          <div className="text-[12px] font-semibold text-slate-100">{p.name}</div>
-                          <div className="text-[10.5px] text-slate-500 mt-0.5 leading-snug">{p.blurb}</div>
-                        </button>
-                      ))}
+                    <h2 className="text-[16px] font-semibold tracking-tight mb-3">Choose a scenario</h2>
+                    <div className="space-y-2" role="radiogroup">
+                      {INCIDENT_PRESETS.map((p) => {
+                        const on = presetId === p.id;
+                        return (
+                          <button key={p.id} role="radio" aria-checked={on} onClick={() => pickPreset(p.id)}
+                            className={`w-full text-left rounded-md border px-4 py-3 flex items-start gap-3 transition-colors ${on ? "border-fg" : "border-line hover:border-strong"}`}>
+                            <span className={`mt-1 w-3.5 h-3.5 rounded-full border shrink-0 ${on ? "border-[4px] border-fg" : "border-strong"}`} />
+                            <span>
+                              <span className="block text-[14px] font-medium">{p.name}</span>
+                              <span className="block text-[13px] text-fg3">{p.blurb}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <button onClick={() => setEditor(true)} className="mt-2 text-[11px] text-slate-400 hover:text-white flex items-center gap-1"><Pencil size={11} /> Edit the incident notice or downtime procedure yourself</button>
+                    <button onClick={() => setEditor(true)} className="mt-3 text-[13px] text-fg2 underline underline-offset-4 decoration-[var(--line-strong)] hover:text-fg">
+                      Write your own incident notice or procedure
+                    </button>
                   </div>
-                  <motion.button
-                    whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={attack}
-                    className="w-full rounded-xl py-3.5 font-bold tracking-wide text-white bg-gradient-to-r from-alarm to-[#ff6b3b] shadow-[0_0_40px_-8px_rgba(255,59,78,0.7)] flex items-center justify-center gap-2"
-                  >
-                    <AlertTriangle size={18} /> SIMULATE CYBERATTACK
-                  </motion.button>
-                  <TestQueue onHover={setFocusTest} />
+                  <button onClick={attack} className="btn btn-danger btn-lg w-full">Simulate cyberattack</button>
+                  <div>
+                    <h2 className="text-[16px] font-semibold tracking-tight mb-2">Urgent tests in progress</h2>
+                    <table className="w-full text-[13px]">
+                      <thead><tr className="text-fg3 text-left"><th className="font-normal py-1.5">Test</th><th className="font-normal">Ward</th><th className="font-normal text-right">Needed within</th></tr></thead>
+                      <tbody>
+                        {TESTS.map((t) => (
+                          <tr key={t.id} className="hair-t" onMouseEnter={() => setFocusTest(t.id)} onMouseLeave={() => setFocusTest(null)}>
+                            <td className="py-1.5 pr-2">
+                              <span className={t.priority === 3 ? "font-medium" : "text-fg2"}>{t.label}</span>
+                              {t.priority === 3 && <span className="text-fg3 text-[11.5px] ml-1.5">STAT</span>}
+                              <div className="text-[12px] text-fg3">{t.clinical}</div>
+                            </td>
+                            <td className="text-fg2 align-top py-1.5">{wardById(t.ward).short}</td>
+                            <td className="text-right tnum align-top py-1.5">{t.deadline} min</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </motion.div>
               )}
 
               {phase === "attack" && (
-                <motion.div key="attack" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="panel p-4 space-y-4 !border-alarm/30">
-                  <div className="grid grid-cols-3 gap-2">
-                    <Stat label="Specimens stranded" value="12" tone="alarm" />
-                    <Stat label="STAT tests at risk" value={String(TESTS.filter((t) => t.priority === 3).length)} tone="alarm" />
-                    <Stat label="Earliest deadline" value={`${Math.min(...TESTS.map((t) => t.deadline))} min`} tone="amber" />
+                <motion.div key="attack" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                  <dl className="grid grid-cols-3 box divide-x divide-[var(--line)]">
+                    <Stat value="12" label="specimens stranded" danger />
+                    <Stat value={String(TESTS.filter((t) => t.priority === 3).length)} label="STAT tests at risk" danger />
+                    <Stat value={`${Math.min(...TESTS.map((t) => t.deadline))} min`} label="earliest deadline" />
+                  </dl>
+                  <div>
+                    <h2 className="text-[14px] font-medium mb-2">Incident notice</h2>
+                    <pre className="mono text-[12px] leading-relaxed whitespace-pre-wrap text-fg2 bg-subtle box p-4 h-[300px] overflow-auto">{report.slice(0, typed)}<span className="animate-pulse">▍</span></pre>
                   </div>
-                  <div className="rounded-xl bg-black/50 border border-alarm/20 p-3 h-[300px] overflow-auto">
-                    <div className="label !text-alarm mb-2 flex items-center gap-1.5"><FileText size={11} /> Incoming incident notice</div>
-                    <pre className="mono text-[11px] leading-relaxed whitespace-pre-wrap text-slate-300">{report.slice(0, typed)}<span className="animate-pulse text-alarm">▍</span></pre>
-                  </div>
-                  <div className="text-[12px] text-slate-400 leading-relaxed">
-                    This is no longer an IT problem: a ventilated ICU patient needs a blood gas within <b className="text-alarm">30 minutes</b>, a stroke patient needs clotting results before a clot-busting drug can be given.
-                  </div>
-                  <motion.button
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}
-                    whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={runAnalysis}
-                    className="w-full rounded-xl py-3.5 font-bold tracking-wide text-ink-950 bg-vital shadow-[0_0_40px_-6px_rgba(46,242,176,0.7)] flex items-center justify-center gap-2"
-                  >
-                    <ShieldCheck size={18} /> ACTIVATE VITALSWITCH
-                  </motion.button>
+                  <p className="text-[14px] text-fg2">
+                    A ventilated ICU patient needs a blood gas within <span className="text-fg font-medium">30 minutes</span>. A stroke patient needs clotting results before a clot-busting drug can be given.
+                  </p>
+                  <button onClick={runAnalysis} className="btn btn-primary btn-lg w-full">Activate VitalSwitch</button>
                 </motion.div>
               )}
 
               {phase === "analyzing" && (
-                <motion.div key="analyzing" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="panel p-4">
-                  <div className="label mb-3">Clocked analysis pipeline</div>
+                <motion.div key="analyzing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <h2 className="text-[16px] font-semibold tracking-tight">Clocked analysis</h2>
                   <Pipeline analysis={analysis} running={running} />
-                  {error && <div className="mt-3 text-[12px] text-alarm">Analysis failed: {error} <button className="underline" onClick={runAnalysis}>retry</button></div>}
+                  {error && <p className="mt-3 text-[13px] text-danger">The analysis failed: {error}. <button className="underline" onClick={runAnalysis}>Try again</button></p>}
                 </motion.div>
               )}
 
-              {(phase === "plan" || phase === "running" || phase === "done") && solved && (
-                <motion.div key="plan" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-4">
+              {postPlan && solved && (
+                <motion.div key="plan" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-10">
                   <Recommendation solved={solved} phase={phase} onApprove={approve} onReplay={replay} conditions={conditions!} analysis={analysis} onHover={setFocusTest} />
-                  {phase !== "plan" && (
-                    <ProveIt userDown={userDown} toggleLab={toggleLab} courierStrike={courierStrike} setCourierStrike={setCourierStrike} conditions={conditions!} />
-                  )}
+                  {phase !== "plan" && <ProveIt userDown={userDown} toggleLab={toggleLab} courierStrike={courierStrike} setCourierStrike={setCourierStrike} conditions={conditions!} />}
                 </motion.div>
               )}
             </AnimatePresence>
           </section>
         </div>
 
-        {/* ---------- payoff banner ---------- */}
-        <AnimatePresence>
-          {phase === "done" && solved && (
-            <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }}
-              className="mt-4 panel !border-vital/30 px-5 py-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-8 bg-gradient-to-r from-vital/[0.08] to-transparent">
-              <div className="mono text-5xl font-black text-vital text-glow-vital">
-                {solved.opt.result.onTime - solved.base.onTime >= 0 ? "+" : ""}{solved.opt.result.onTime - solved.base.onTime}
-              </div>
-              <div className="flex-1">
-                <div className="text-lg font-semibold text-slate-100">
-                  more urgent results on time during the same outage
-                </div>
-                <div className="text-[12.5px] text-slate-400">
-                  STAT results on time: <span className="text-alarm mono">{solved.base.statOnTime}/{solved.base.statTotal}</span> → <span className="text-vital mono">{solved.opt.result.statOnTime}/{solved.opt.result.statTotal}</span>
-                  {" · "}total lateness: <span className="text-alarm mono">{solved.base.minutesLate} min</span> → <span className="text-vital mono">{solved.opt.result.minutesLate} min</span>
-                  {" · "}computed by simulation, not estimated.
-                </div>
-              </div>
-              <div className="text-[11.5px] text-amberx flex items-center gap-1.5"><Zap size={13} /> Now knock out a backup lab on the map →</div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ---------- comparison ---------- */}
-        {(phase === "running" || phase === "done") && solved && (
-          <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mt-4 grid lg:grid-cols-2 gap-4">
-            <Gantt title="Without VitalSwitch" sub={`Manual downtime: ${25} min to coordinate by phone, then each specimen goes to the first approved site that can run it — no capacity or deadline awareness.`} result={solved.base} simT={simT} tone="alarm" />
-            <Gantt title="With VitalSwitch" sub="Verified, capacity-aware plan dispatched 2 minutes after the notice, approved by the coordinator." result={solved.opt.result} simT={simT} tone="vital" />
+        {/* ---------- payoff ---------- */}
+        {phase === "done" && solved && (
+          <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-12 grid sm:grid-cols-[auto_1fr] gap-x-8 gap-y-2 items-baseline">
+            <div className="text-[56px] leading-none font-semibold tracking-[-0.03em] tnum text-ok">
+              {solved.opt.result.onTime - solved.base.onTime >= 0 ? "+" : ""}{solved.opt.result.onTime - solved.base.onTime}
+            </div>
+            <div>
+              <p className="text-[18px] font-medium">more urgent results on time during the same outage</p>
+              <p className="text-[14px] text-fg2 mt-1">
+                STAT results on time went from {solved.base.statOnTime} to {solved.opt.result.statOnTime} of {solved.opt.result.statTotal}. Total lateness fell from {solved.base.minutesLate} to {solved.opt.result.minutesLate} minutes. These numbers come from the simulation.
+              </p>
+            </div>
           </motion.section>
         )}
 
-        {(phase === "plan" || phase === "running" || phase === "done") && (
-          <details className="mt-4 panel p-4 group">
-            <summary className="cursor-pointer text-[12px] text-slate-300 flex items-center gap-2 list-none">
-              <ChevronRight size={14} className="group-open:rotate-90 transition" /> How Clocked shaped this plan
-              {anyEmulated && <span className="mono text-[10px] text-amberx">· offline stand-in responses (no API key)</span>}
+        {/* ---------- comparison ---------- */}
+        {(phase === "running" || phase === "done") && solved && (
+          <section className={`${phase === "done" ? "mt-8" : "mt-12"} grid lg:grid-cols-2 gap-6`}>
+            <Gantt title="Without VitalSwitch" sub="25 minutes of phone triage, then each specimen goes to the first approved site that can run it. No capacity or deadline awareness." result={solved.base} simT={simT} tone="alarm" />
+            <Gantt title="With VitalSwitch" sub="The verified, capacity-aware plan, dispatched 2 minutes after the notice and approved by the coordinator." result={solved.opt.result} simT={simT} tone="vital" />
+          </section>
+        )}
+
+        {postPlan && (
+          <details className="mt-10 hair-t pt-6 group">
+            <summary className="cursor-pointer list-none flex items-center gap-2 text-[16px] font-semibold tracking-tight">
+              <ChevronRight size={16} className="group-open:rotate-90 transition-transform" /> How Clocked shaped this plan
+              {anyEmulated && <span className="text-[13px] font-normal text-warn">Some steps used the offline stand-in</span>}
             </summary>
-            <div className="mt-3 max-w-3xl"><Pipeline analysis={analysis} running={null} /></div>
+            <div className="mt-2 max-w-3xl"><Pipeline analysis={analysis} running={null} /></div>
           </details>
         )}
 
-        <footer className="mt-6 text-[11px] text-slate-600 leading-relaxed max-w-4xl">
-          <Info size={11} className="inline mr-1 -mt-0.5" />
-          VitalSwitch is a hackathon prototype running on a fully synthetic hospital. Patients, labs, timings and procedures are fictional; results are simulation outputs, not claims about real clinical outcomes. Clocked interprets text; clinical priorities, deadlines and constraints come from the scenario data and the approved procedure. Every plan needs human approval.
+        <footer className="mt-12 hair-t pt-6 text-[13px] text-fg3 max-w-[80ch]">
+          VitalSwitch is a hackathon prototype running on a fully synthetic hospital. Patients, labs, timings and procedures are fictional, and the results are simulation outputs, not claims about real clinical outcomes. Clocked interprets text. Clinical priorities, deadlines and constraints come from the scenario data and the approved procedure. Every plan needs human approval.
         </footer>
       </div>
+
+      {/* ---------- code red moment ---------- */}
+      <AnimatePresence>
+        {flash && (
+          <motion.div key="flash" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: "color-mix(in srgb, var(--bg) 88%, transparent)" }}>
+            <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.3, ease: "easeOut" }} className="text-center px-6">
+              <div className="flex items-center justify-center gap-3">
+                <span className="w-3 h-3 rounded-full bg-danger animate-pulse" />
+                <span className="text-[56px] sm:text-[72px] font-semibold tracking-[-0.03em] text-danger leading-none">Code red</span>
+              </div>
+              <p className="mt-4 text-[17px] text-fg2">Ransomware detected at 13:48. The Core Laboratory is offline.</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- toast ---------- */}
       <AnimatePresence>
         {toast && (
-          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 30 }}
-            className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 panel !bg-ink-900/95 px-5 py-3 max-w-lg ${toast.tone === "alarm" ? "!border-alarm/40" : "!border-vital/40"}`}>
-            <div className={`text-sm font-semibold ${toast.tone === "alarm" ? "text-alarm" : "text-vital"}`}>{toast.title}</div>
-            <div className="text-[12px] text-slate-300 mt-0.5">{toast.body}</div>
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }} role="status"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 box px-5 py-3 w-[min(520px,calc(100vw-32px))] shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+            <div className={`text-[14px] font-medium ${toast.tone === "danger" ? "text-danger" : "text-fg"}`}>{toast.title}</div>
+            <div className="text-[13px] text-fg2 mt-0.5">{toast.body}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -446,37 +441,11 @@ export default function Page() {
 
 /* ================= sub components ================= */
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: "alarm" | "amber" | "vital" }) {
-  const c = tone === "alarm" ? "text-alarm text-glow-alarm" : tone === "amber" ? "text-amberx" : "text-vital text-glow-vital";
+function Stat({ value, label, danger }: { value: string; label: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-black/30 p-2.5">
-      <div className={`mono text-2xl font-bold ${c}`}>{value}</div>
-      <div className="text-[10px] text-slate-500 leading-tight">{label}</div>
-    </div>
-  );
-}
-
-function TestQueue({ onHover }: { onHover: (id: string | null) => void }) {
-  return (
-    <div>
-      <div className="label mb-2">Urgent tests in flight</div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[330px] overflow-auto pr-1">
-        {TESTS.map((t) => (
-          <div key={t.id} onMouseEnter={() => onHover(t.id)} onMouseLeave={() => onHover(null)}
-            className="rounded-lg border border-white/[0.06] bg-white/[0.015] px-2.5 py-1.5 hover:border-white/20 transition">
-            <div className="flex items-center gap-1.5">
-              <span className={`mono text-[8.5px] px-1 rounded ${t.priority === 3 ? "bg-alarm/15 text-alarm" : "bg-amberx/10 text-amberx"}`}>{PRIORITY_LABEL[t.priority]}</span>
-              <span className="text-[11.5px] font-medium text-slate-200 truncate">{t.label}</span>
-              <span className="flex-1" />
-              <span className="mono text-[10px] text-slate-500">{wardById(t.ward).short}</span>
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
-              <span className="truncate mr-2">{t.clinical}</span>
-              <span className="mono shrink-0">≤{t.deadline}m</span>
-            </div>
-          </div>
-        ))}
-      </div>
+    <div className="px-4 py-3">
+      <dd className={`text-[24px] font-semibold tracking-tight tnum ${danger ? "text-danger" : ""}`}>{value}</dd>
+      <dt className="text-[12.5px] text-fg3">{label}</dt>
     </div>
   );
 }
@@ -487,64 +456,50 @@ function Recommendation({ solved, phase, onApprove, onReplay, conditions, analys
   const gain = opt.result.onTime - base.onTime;
   const statGain = opt.result.statOnTime - base.statOnTime;
   return (
-    <div className="panel p-4">
-      <div className="flex items-center justify-between">
-        <div className="label !text-vital">Continuity recommendation</div>
-        <div className="mono text-[10px] text-slate-500">{opt.evaluated.toLocaleString()} plans · {solved.ms.toFixed(0)} ms</div>
+    <div>
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="text-[16px] font-semibold tracking-tight">Recommended plan</h2>
+        <span className="text-[12.5px] text-fg3 tnum">{opt.evaluated.toLocaleString()} plans in {solved.ms.toFixed(0)} ms</span>
       </div>
-      <div className="grid grid-cols-3 gap-2 mt-3">
-        <div className="rounded-xl border border-alarm/20 bg-alarm/[0.04] p-2.5">
-          <div className="mono text-2xl font-bold text-alarm">{base.onTime}<span className="text-sm text-slate-500">/12</span></div>
-          <div className="text-[10px] text-slate-400">on time without</div>
-        </div>
-        <div className="rounded-xl border border-vital/25 bg-vital/[0.05] p-2.5">
-          <div className="mono text-2xl font-bold text-vital text-glow-vital">{opt.result.onTime}<span className="text-sm text-slate-500">/12</span></div>
-          <div className="text-[10px] text-slate-400">on time with VitalSwitch</div>
-        </div>
-        <div className="rounded-xl border border-white/10 p-2.5">
-          <div className={`mono text-2xl font-bold ${gain >= 0 ? "text-vital" : "text-alarm"}`}>{gain >= 0 ? "+" : ""}{gain}</div>
-          <div className="text-[10px] text-slate-400">results saved · STAT {statGain >= 0 ? "+" : ""}{statGain}</div>
-        </div>
-      </div>
+      <dl className="grid grid-cols-3 box divide-x divide-[var(--line)] mt-3">
+        <div className="px-4 py-3"><dd className="text-[24px] font-semibold tracking-tight tnum">{base.onTime}<span className="text-fg3 text-[16px]"> / 12</span></dd><dt className="text-[12.5px] text-fg3">on time without</dt></div>
+        <div className="px-4 py-3"><dd className="text-[24px] font-semibold tracking-tight tnum text-ok">{opt.result.onTime}<span className="text-fg3 text-[16px]"> / 12</span></dd><dt className="text-[12.5px] text-fg3">on time with VitalSwitch</dt></div>
+        <div className="px-4 py-3"><dd className="text-[24px] font-semibold tracking-tight tnum">{gain >= 0 ? "+" : ""}{gain}</dd><dt className="text-[12.5px] text-fg3">results saved, {statGain >= 0 ? "+" : ""}{statGain} STAT</dt></div>
+      </dl>
 
-      <div className="mt-3 space-y-1 max-h-[280px] overflow-auto pr-1">
-        {opt.result.outcomes
-          .slice()
-          .sort((a: TestOutcome, b: TestOutcome) => b.test.priority - a.test.priority || a.test.deadline - b.test.deadline)
-          .map((o: TestOutcome) => {
-            const isOpen = open === o.test.id;
-            return (
-              <div key={o.test.id} onMouseEnter={() => onHover(o.test.id)} onMouseLeave={() => onHover(null)}>
-                <button onClick={() => setOpen(isOpen ? null : o.test.id)} className="w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 hover:bg-white/[0.03]">
-                  <span className={`mono text-[8.5px] px-1 rounded ${o.test.priority === 3 ? "bg-alarm/15 text-alarm" : "bg-amberx/10 text-amberx"}`}>{PRIORITY_LABEL[o.test.priority]}</span>
-                  <span className="text-[11.5px] text-slate-200 w-[124px] truncate">{o.test.label}</span>
-                  <span className="mono text-[10px] text-slate-500 w-8">{wardById(o.test.ward).short}</span>
-                  <ChevronRight size={11} className="text-slate-600" />
-                  <span className="mono text-[10.5px] font-semibold px-1.5 rounded" style={{ color: LAB_COLOR[o.lab], background: LAB_COLOR[o.lab] + "18" }}>
-                    {o.dest === "wait" ? "HOLD → CORE" : labById(o.lab).short}
-                  </span>
-                  <span className="flex-1" />
-                  <span className={`mono text-[10.5px] ${o.onTime ? "text-vital" : "text-alarm"}`}>{clock(o.finish)} {o.onTime ? "✓" : `+${o.late}m`}</span>
-                </button>
-                <AnimatePresence>
-                  {isOpen && <Why o={o} solved={solved} conditions={conditions} analysis={analysis} />}
-                </AnimatePresence>
-              </div>
-            );
-          })}
-      </div>
+      <table className="w-full text-[13px] mt-4">
+        <thead><tr className="text-fg3 text-left"><th className="font-normal py-1.5">Test</th><th className="font-normal">Route</th><th className="font-normal text-right">Result</th></tr></thead>
+        <tbody>
+          {opt.result.outcomes.slice()
+            .sort((a: TestOutcome, b: TestOutcome) => b.test.priority - a.test.priority || a.test.deadline - b.test.deadline)
+            .flatMap((o: TestOutcome) => {
+              const isOpen = open === o.test.id;
+              const rows = [
+                <tr key={o.test.id} className="hair-t cursor-pointer hover:bg-subtle" onClick={() => setOpen(isOpen ? null : o.test.id)}
+                  onMouseEnter={() => onHover(o.test.id)} onMouseLeave={() => onHover(null)} aria-expanded={isOpen}>
+                  <td className="py-2 pr-2">
+                    <ChevronRight size={12} className={`inline -mt-0.5 mr-1 text-fg3 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    <span className={o.test.priority === 3 ? "font-medium" : "text-fg2"}>{o.test.label}</span>
+                    <span className="text-fg3 ml-1.5">{wardById(o.test.ward).short}</span>
+                  </td>
+                  <td className="py-2 font-medium" style={{ color: o.dest === "wait" ? "var(--fg-3)" : LAB_COLOR[o.lab] }}>
+                    {o.dest === "wait" ? "Hold for Core Lab" : labById(o.lab).short}
+                  </td>
+                  <td className={`py-2 text-right tnum ${o.onTime ? "text-fg2" : "text-danger"}`}>{clock(o.finish)}{o.onTime ? "" : `, ${o.late} min late`}</td>
+                </tr>,
+              ];
+              if (isOpen) rows.push(<tr key={o.test.id + "-why"}><td colSpan={3} className="pb-3"><Why o={o} solved={solved} conditions={conditions} analysis={analysis} /></td></tr>);
+              return rows;
+            })}
+        </tbody>
+      </table>
 
-      {phase === "plan" ? (
-        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={onApprove}
-          className="mt-3 w-full rounded-xl py-3 font-bold tracking-wide text-ink-950 bg-vital shadow-[0_0_40px_-6px_rgba(46,242,176,0.7)] flex items-center justify-center gap-2">
-          <CheckCircle2 size={18} /> APPROVE &amp; DISPATCH PLAN
-        </motion.button>
-      ) : (
-        <button onClick={onReplay} className="mt-3 w-full rounded-xl py-2.5 text-[12px] font-semibold text-slate-200 border border-white/10 hover:border-white/25 flex items-center justify-center gap-2">
-          <Play size={14} /> Replay side-by-side
-        </button>
-      )}
-      <div className="text-[10px] text-slate-500 mt-2 text-center">Signed off by: Lab Downtime Coordinator (simulated) · click any row to see why</div>
+      <div className="mt-5">
+        {phase === "plan"
+          ? <button onClick={onApprove} className="btn btn-primary btn-lg w-full">Approve and dispatch</button>
+          : <button onClick={onReplay} className="btn btn-secondary btn-lg w-full"><Play size={14} /> Replay the comparison</button>}
+        <p className="text-[12.5px] text-fg3 mt-2">Sign-off by the lab downtime coordinator is simulated. Select a row to see why each route was chosen.</p>
+      </div>
     </div>
   );
 }
@@ -552,53 +507,56 @@ function Recommendation({ solved, phase, onApprove, onReplay, conditions, analys
 function Why({ o, solved, conditions, analysis }: any) {
   const alts = alternatives(o.test.id, solved.opt.assignments, conditions, analysis.verify.auth);
   return (
-    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-      className="ml-6 mb-2 rounded-lg border border-white/[0.06] bg-black/30 p-2.5 text-[10.5px] space-y-1 overflow-hidden">
-      <div className="text-slate-400">{o.test.clinical}. Result needed by <span className="mono text-slate-200">{clock(o.test.deadline)}</span>.</div>
+    <div className="ml-4 rounded-md bg-subtle px-4 py-3 text-[12.5px] space-y-1">
+      <p className="text-fg2">{o.test.clinical}. Result needed by <span className="tnum text-fg">{clock(o.test.deadline)}</span>.</p>
       {alts.map((a: any) => {
         const chosen = a.lab === o.lab;
         return (
-          <div key={a.lab} className={`flex items-center gap-2 ${chosen ? "text-slate-100" : "text-slate-500"}`}>
-            <span className="mono w-10" style={{ color: chosen ? LAB_COLOR[a.lab as LabId] : undefined }}>{labById(a.lab).short}</span>
-            {a.excluded ? (
-              <span className="text-alarm/80">✕ {a.excluded}</span>
-            ) : (
+          <div key={a.lab} className={`grid grid-cols-[56px_1fr] gap-2 ${chosen ? "text-fg" : "text-fg3"}`}>
+            <span className="mono font-medium" style={{ color: chosen ? LAB_COLOR[a.lab as LabId] : undefined }}>{labById(a.lab).short}</span>
+            {a.excluded ? <span>Excluded: {a.excluded.toLowerCase()}</span> : (
               <span>
-                {chosen ? "▶ chosen · " : ""}ready {clock(a.finish)} {a.onTime ? <span className="text-vital">on time</span> : <span className="text-alarm">late</span>}
-                {!chosen && a.onTime && <span className="text-slate-600"> (capacity reserved for more urgent tests)</span>}
+                {chosen ? "Chosen. " : ""}Ready {clock(a.finish)}, {a.onTime ? "on time" : <span className="text-danger">late</span>}
+                {!chosen && a.onTime ? ". Capacity kept for more urgent tests." : ""}
               </span>
             )}
           </div>
         );
       })}
-      {o.dest === "wait" && <div className="text-amberx">No legal backup can meet this test; held for Core Lab restoration ({Math.round(conditions.restorationMinutes / 60)} h, from Extract).</div>}
-    </motion.div>
+      {o.dest === "wait" && <p className="text-warn">No approved backup can meet this test, so it waits for the Core Lab (about {Math.round(conditions.restorationMinutes / 60)} h, from Extract).</p>}
+    </div>
+  );
+}
+
+function Switch({ on, onClick, disabled, label, note }: { on: boolean; onClick: () => void; disabled?: boolean; label: string; note: string }) {
+  return (
+    <button role="switch" aria-checked={on} disabled={disabled} onClick={onClick}
+      className={`w-full flex items-center gap-3 py-2.5 hair-t text-left ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[14px]">{label}</span>
+        <span className={`block text-[12.5px] ${!on ? "text-danger" : "text-fg3"}`}>{note}</span>
+      </span>
+      <span className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${on ? "bg-fg" : "bg-muted border border-strong"}`}>
+        <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${on ? "left-[18px] bg-[var(--on-fg)]" : "left-0.5 bg-[var(--fg-3)]"}`} />
+      </span>
+    </button>
   );
 }
 
 function ProveIt({ userDown, toggleLab, courierStrike, setCourierStrike, conditions }: any) {
   return (
-    <div className="panel p-4">
-      <div className="label !text-amberx mb-1">Prove it isn't scripted</div>
-      <div className="text-[11.5px] text-slate-400 mb-3">Take resources away. The engine re-plans from scratch; outcomes can honestly get worse.</div>
-      <div className="grid grid-cols-2 gap-2">
-        {LABS.filter((l) => l.id !== "core").map((l) => {
-          const off = !!userDown[l.id];
-          const offByIncident = conditions?.labDown[l.id] && !off;
-          return (
-            <button key={l.id} disabled={offByIncident} onClick={() => toggleLab(l.id)}
-              className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[11.5px] transition ${off ? "border-alarm/50 bg-alarm/10 text-alarm" : offByIncident ? "border-white/5 text-slate-600" : "border-white/10 hover:border-white/25 text-slate-200"}`}>
-              <span className="w-2 h-2 rounded-full" style={{ background: off || offByIncident ? "#ff3b4e" : LAB_COLOR[l.id as LabId] }} />
-              <span className="flex-1 truncate">{l.name}</span>
-              <span className="mono text-[9px]">{off ? "OFF" : offByIncident ? "DOWN" : "ON"}</span>
-            </button>
-          );
-        })}
-        <button onClick={() => setCourierStrike(!courierStrike)}
-          className={`col-span-2 flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[11.5px] ${courierStrike ? "border-alarm/50 bg-alarm/10 text-alarm" : "border-white/10 hover:border-white/25 text-slate-200"}`}>
-          <Truck size={13} /> <span className="flex-1">Courier service</span><span className="mono text-[9px]">{courierStrike ? "STOPPED" : "RUNNING"}</span>
-        </button>
-      </div>
+    <div>
+      <h2 className="text-[16px] font-semibold tracking-tight">Test it under pressure</h2>
+      <p className="text-[13px] text-fg2 mt-1 mb-3">Turn off resources. The engine re-plans from scratch, and the outcome can get worse.</p>
+      {LABS.filter((l) => l.id !== "core").map((l) => {
+        const off = !!userDown[l.id];
+        const byIncident = conditions?.labDown[l.id] && !off;
+        return (
+          <Switch key={l.id} on={!off && !byIncident} disabled={byIncident} onClick={() => toggleLab(l.id)} label={l.name}
+            note={byIncident ? "Down in this incident" : off ? "Disabled by you" : "Available"} />
+        );
+      })}
+      <Switch on={!courierStrike} onClick={() => setCourierStrike(!courierStrike)} label="Courier service" note={courierStrike ? "Stopped by you" : "Running"} />
     </div>
   );
 }
@@ -607,26 +565,28 @@ function Editor({ report, playbook, onClose, onSave }: any) {
   const [r, setR] = useState(report);
   const [p, setP] = useState(playbook);
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="panel !bg-ink-900 w-full max-w-5xl p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold">Edit the inputs — Clocked will read whatever you write</div>
-          <button onClick={onClose}><X size={16} /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "color-mix(in srgb, var(--fg) 30%, transparent)" }} onClick={onClose}>
+      <div className="box w-full max-w-5xl p-6 shadow-[0_16px_50px_rgba(0,0,0,0.15)]" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit inputs">
+        <div className="flex items-start justify-between mb-4 gap-4">
+          <div>
+            <h2 className="text-[18px] font-semibold tracking-tight">Edit the inputs</h2>
+            <p className="text-[13px] text-fg2">Clocked reads whatever you write. Try suspending the courier, or removing the West Wing approval for coagulation.</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="btn btn-secondary !h-8 !w-8 !p-0 shrink-0"><X size={14} /></button>
         </div>
         <div className="grid md:grid-cols-2 gap-4">
           <label className="block">
-            <div className="label mb-1">Incident notice (read by Guard, Protect, Extract, Decide)</div>
-            <textarea value={r} onChange={(e) => setR(e.target.value)} className="mono w-full h-[380px] text-[11px] bg-black/50 border border-white/10 rounded-lg p-3 text-slate-200 focus:outline-none focus:border-cyanx/50" />
+            <span className="block text-[13px] font-medium mb-1.5">Incident notice <span className="text-fg3 font-normal">read by Guard, Protect, Extract and Decide</span></span>
+            <textarea id="notice" value={r} onChange={(e) => setR(e.target.value)} className="mono w-full h-[360px] text-[12px] bg-subtle box p-3 focus:outline-none" />
           </label>
           <label className="block">
-            <div className="label mb-1">Approved downtime procedure (checked by Verify)</div>
-            <textarea value={p} onChange={(e) => setP(e.target.value)} className="mono w-full h-[380px] text-[11px] bg-black/50 border border-white/10 rounded-lg p-3 text-slate-200 focus:outline-none focus:border-cyanx/50" />
+            <span className="block text-[13px] font-medium mb-1.5">Downtime procedure <span className="text-fg3 font-normal">checked by Verify</span></span>
+            <textarea id="procedure" value={p} onChange={(e) => setP(e.target.value)} className="mono w-full h-[360px] text-[12px] bg-subtle box p-3 focus:outline-none" />
           </label>
         </div>
-        <div className="text-[11px] text-slate-500 mt-2">Try: say St. Mary's courier is suspended, or remove the West Wing approval for coagulation. The plan will change.</div>
-        <div className="flex justify-end gap-2 mt-3">
-          <button onClick={() => { setR(INCIDENT_PRESETS[0].text); setP(DEFAULT_PLAYBOOK); }} className="px-3 py-1.5 text-[12px] text-slate-400">Restore defaults</button>
-          <button onClick={() => onSave(r, p)} className="px-4 py-1.5 rounded-lg bg-vital text-ink-950 text-[12px] font-bold">Use these inputs</button>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={() => { setR(INCIDENT_PRESETS[0].text); setP(DEFAULT_PLAYBOOK); }} className="btn btn-secondary">Restore defaults</button>
+          <button onClick={() => onSave(r, p)} className="btn btn-primary">Use these inputs</button>
         </div>
       </div>
     </div>
@@ -635,26 +595,26 @@ function Editor({ report, playbook, onClose, onSave }: any) {
 
 function AuditLog({ calls, onClose }: { calls: { k: string; v: any }[]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end" onClick={onClose}>
-      <motion.div initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="w-full max-w-2xl h-full bg-ink-900 border-l border-white/10 p-5 overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "color-mix(in srgb, var(--fg) 25%, transparent)" }} onClick={onClose}>
+      <div className="w-full max-w-2xl h-full bg-bg border-l border-line p-6 overflow-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Clocked API log">
+        <div className="flex items-start justify-between mb-5 gap-4">
           <div>
-            <div className="font-semibold">Clocked API log</div>
-            <div className="text-[11px] text-slate-500">Exact responses that drove this run. Requests are built in <span className="mono">lib/clocked.ts</span>.</div>
+            <h2 className="text-[18px] font-semibold tracking-tight">Clocked API log</h2>
+            <p className="text-[13px] text-fg2">The exact responses behind this run. Requests are built in <span className="mono text-[12px]">lib/clocked.ts</span>.</p>
           </div>
-          <button onClick={onClose}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="btn btn-secondary !h-8 !w-8 !p-0 shrink-0"><X size={14} /></button>
         </div>
-        {calls.length === 0 && <div className="text-sm text-slate-500">No calls yet — run the scenario.</div>}
+        {calls.length === 0 && <p className="text-[14px] text-fg3">No calls yet. Run a scenario first.</p>}
         {calls.map(({ k, v }) => (
-          <details key={k} className="mb-2 rounded-lg border border-white/10 p-3" open={false}>
-            <summary className="cursor-pointer flex items-center gap-2 text-[12px]">
-              <span className="font-semibold capitalize">{k}</span><ModeBadge call={v.call} />
-              {v.call.error && <span className="text-[10px] text-amberx truncate">{v.call.error}</span>}
+          <details key={k} className="hair-t py-3">
+            <summary className="cursor-pointer flex items-center gap-3 text-[14px]">
+              <span className="font-medium capitalize">{k}</span><ModeBadge call={v.call} />
             </summary>
-            <pre className="mono text-[10px] text-slate-300 mt-2 max-h-[400px] overflow-auto whitespace-pre-wrap">{JSON.stringify(v.call.data, null, 2)}</pre>
+            {v.call.error && <p className="text-[12.5px] text-warn mt-2">{v.call.error}</p>}
+            <pre className="mono text-[11.5px] text-fg2 mt-2 max-h-[420px] overflow-auto whitespace-pre-wrap bg-subtle rounded-md p-3">{JSON.stringify(v.call.data, null, 2)}</pre>
           </details>
         ))}
-      </motion.div>
+      </div>
     </div>
   );
 }
