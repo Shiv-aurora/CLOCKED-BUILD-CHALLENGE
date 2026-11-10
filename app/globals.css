@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #05070d;
+  --vital: #2ef2b0;
+  --alarm: #ff3b4e;
+}
+
+html, body { background: var(--bg); color: #e6ebf5; }
+body { font-family: var(--font-sans), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+* { scrollbar-width: thin; scrollbar-color: #2a3550 transparent; }
+
+.panel {
+  @apply rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.035] to-white/[0.01] backdrop-blur-xl;
+  box-shadow: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 20px 60px -30px rgba(0,0,0,0.8);
+}
+.label { @apply text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400; }
+.mono { font-family: var(--font-mono), ui-monospace, monospace; }
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(92,200,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92,200,255,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Code red vignette */
+.vignette-red {
+  pointer-events: none;
+  position: fixed; inset: 0; z-index: 40;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(255,40,60,0.28) 100%);
+  animation: redpulse 1.6s ease-in-out infinite;
+}
+@keyframes redpulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+
+.scanlines::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+}
+
+.glitch { animation: glitch 2.2s infinite steps(1); }
+@keyframes glitch {
+  0%, 86%, 100% { transform: translate(0,0); filter: none; }
+  88% { transform: translate(-2px, 1px); filter: hue-rotate(40deg); }
+  90% { transform: translate(2px, -1px); }
+  92% { transform: translate(-1px, 0); filter: saturate(3); }
+}
+
+.dash-flow { stroke-dasharray: 4 8; animation: dash 1.2s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -24; } }
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  background-size: 200% 100%; animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+
+.text-glow-vital { text-shadow: 0 0 24px rgba(46,242,176,0.55); }
+.text-glow-alarm { text-shadow: 0 0 24px rgba(255,59,78,0.6); }
+
+mark.q { background: rgba(255,59,78,0.18); color: #ff9aa5; text-decoration: line-through; text-decoration-color: rgba(255,59,78,.7); border-radius: 3px; padding: 0 2px; }
+mark.pii { background: rgba(92,200,255,0.16); color: #9fdcff; border-radius: 3px; padding: 0 3px; }
