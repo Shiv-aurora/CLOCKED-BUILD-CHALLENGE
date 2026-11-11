@@ -57,12 +57,12 @@ export function Hero({ onDemo }: { onDemo: () => void }) {
   return (
     <section id="top" className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-20 sm:pt-28 pb-10">
       <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="text-[40px] sm:text-[64px] leading-[1.02] font-semibold tracking-[-0.035em] max-w-[16ch]">
-        Ransomware stops the lab. Not the patients.
+        className="text-[40px] sm:text-[60px] leading-[1.04] font-semibold tracking-[-0.035em] max-w-[20ch]">
+        Keep hospital labs running through a cyberattack.
       </motion.h1>
       <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
-        className="text-[18px] text-fg2 mt-6 max-w-[56ch] leading-relaxed">
-        When a cyberattack takes a hospital lab offline, VitalSwitch reads the incident, checks the hospital's own downtime rules and reroutes every urgent blood test to a lab that still works.
+        className="text-[18px] text-fg2 mt-6 max-w-[64ch] leading-relaxed">
+        VitalSwitch keeps hospital lab testing going during a cyberattack. When ransomware shuts down a hospital's main lab, urgent blood tests for heart attacks, strokes and sepsis are left with nowhere to go. VitalSwitch reads the incident report, checks what the hospital's own downtime rules allow, and sends each urgent test to a lab that still works, so doctors get results in time to treat their patients. A person approves the plan before anything moves.
       </motion.p>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="mt-8 flex flex-wrap gap-3">
         <button onClick={onDemo} className="btn btn-primary btn-lg !px-6">Try the live demo</button>
