@@ -5,6 +5,7 @@ const ALLOWED = new Set(["injection", "pii", "extract", "decide", "grounding"]);
 const BASE = "https://clocked.rezolve.ai/clocked";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ endpoint: string }> }) {
   const { endpoint } = await ctx.params;

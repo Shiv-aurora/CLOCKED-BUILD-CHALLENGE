@@ -2,108 +2,138 @@
 
 **Keep hospital labs running through a cyberattack.**
 
-VitalSwitch keeps hospital lab testing going during a cyberattack. When ransomware shuts down a hospital's main lab, urgent blood tests for heart attacks, strokes and sepsis are left with nowhere to go. VitalSwitch reads the incident report, checks what the hospital's own downtime rules allow, and sends each urgent test to a lab that still works, so doctors get results in time to treat their patients. A person approves the plan before anything moves.
+When ransomware takes down a hospital's main laboratory, urgent blood tests for heart attacks, strokes and sepsis are left with nowhere to go. VitalSwitch reads the incident report with five Clocked APIs, checks what the hospital's own downtime rules allow, and reroutes every urgent test to a lab that still works. It produces a plan a coordinator can approve in seconds.
 
-Built for the Clocked Build Challenge 2026.
+**[Try the live app → vitalswitch.vercel.app](https://vitalswitch.vercel.app)**  ·  Every Clocked call is live, and the API key stays on the server.
 
-> **Everything runs on a synthetic hospital.** Patients, labs, timings and procedures are fictional. The before/after numbers are simulation outputs, not claims about real clinical outcomes.
+![VitalSwitch landing page](docs/hero.png)
+
+| | Without VitalSwitch | With VitalSwitch |
+|---|---|---|
+| Urgent results back on time (default scenario) | 4 of 12 | **11 of 12** |
+| Life-critical (STAT) results on time | 1 of 7 | **6 of 7** |
+| Time to a verified plan | 25+ min of phone triage | **seconds** |
+| Re-plan when another lab fails | start over by hand | **under 50 ms** |
+
+<sub>All figures are computed by the simulation (`npm run test:engine` reproduces them). The hospital, patients, labs and procedures are synthetic.</sub>
 
 ---
 
-## Try it
+## Why this matters
 
-**Live app:** https://vitalswitch.vercel.app. Every Clocked call is live; the key is held server-side on Vercel.
+AI is making cyberattacks faster, cheaper and easier to scale. Hospitals are already a favourite ransomware target, and when one is hit the damage isn't measured in lost files. It's measured in delayed treatment.
 
-**Static demo:** https://claude.ai/artifact/UTp4KwYZWLXCJbx5JcJRaR. This build replays real Clocked responses that were recorded with a live key, so no key is exposed. See [Static build](#static-build).
+Most security tools focus on stopping the attack. VitalSwitch focuses on **the hours after an attack succeeds**, when the IT team is containing the breach and clinicians still need answers. During a lab outage today, staff fall back on phone calls and paper. Samples go to whichever backup lab comes to mind first, with no view of capacity, deadlines, or what the hospital's downtime procedure actually allows.
 
-**Run it locally with live Clocked calls:**
+VitalSwitch turns that improvisation into a verified, explainable plan.
 
-```bash
-npm install
-cp .env.example .env.local   # then set CLOCKED_API_KEY
-npm run dev                  # http://localhost:3000
+## How it works
+
+1. **Read the attack.** Clocked screens the incident report for planted instructions, hides patient details, and works out exactly which labs and transport routes are down, and for how long.
+2. **Check the rules.** Clocked checks every possible backup route against the hospital's approved downtime procedure. Anything the procedure does not clearly allow is blocked.
+3. **Reroute, with sign-off.** A planning engine compares more than a thousand candidate plans in milliseconds and recommends the one that gets the most urgent results back on time. A coordinator approves it before anything moves.
+
+| The attack hits | VitalSwitch recommends a verified plan |
+|---|---|
+| ![Core Lab encrypted, samples stuck](docs/attack.png) | ![Plan with Clocked results and approval](docs/plan.png) |
+
+**The payoff**: the same outage and the same twelve tests, replayed side by side. Click any backup lab to take it offline, and VitalSwitch re-plans from scratch.
+
+![Side-by-side outcome: 4 of 12 versus 11 of 12 on time](docs/outcome.png)
+
+## How Clocked drives every decision
+
+Clocked is the decision layer of VitalSwitch, not a feature on the side. Five endpoints run in a fixed pipeline, and each output changes what the planning engine is allowed to do.
+
+```mermaid
+flowchart LR
+    N[Incident report] --> G[Guard<br/>/injection]
+    G -->|planted paragraphs removed| P[Protect<br/>/pii]
+    P -->|patient details hidden| E[Extract<br/>/extract]
+    P --> D[Decide<br/>/decide]
+    R[Downtime procedure] --> V[Verify<br/>/grounding]
+    E -->|restoration time| C[Hard constraints]
+    D -->|labs and routes down| C
+    V -->|approved routes only| C
+    C --> O[Continuity engine<br/>1,000+ plans compared]
+    O --> H[Coordinator approval]
 ```
 
-Get a key at clocked.rezolve.ai/account. Every Clocked call goes through the server route `app/api/clocked/[endpoint]`, so the key never reaches the browser.
+| Endpoint | What VitalSwitch sends | How the answer changes the app |
+|---|---|---|
+| **Guard** `/injection` | The incident report, treated as untrusted content, with a security context for a lab-routing assistant | Every paragraph containing flagged evidence is **removed before any other endpoint reads the report**. In the *Poisoned bulletin* scenario, a hidden paragraph tries to mark two working labs offline and send samples to a fake lab. Guard flags it at 99%, and the plan is protected. |
+| **Protect** `/pii` | The cleaned report. Entities: `person`, `phone`, and a custom `medical_record_number`. Mode: `replace` | Only the anonymized text flows downstream, so patient identifiers never leave the intake step. |
+| **Extract** `/extract` | Fields for incident ID, issue time, restoration estimate, affected systems (as a list) and containment action | "approximately 6 hours" becomes 360 minutes. That sets when the main lab returns for any sample with no approved backup. |
+| **Decide** `/decide` | A `multiselect` over eight criteria (five labs, courier, pneumatic tube, lab IT system) plus a severity `score` | Selected labels switch labs off, cut courier routes, slow transport when the tube is down and add paperwork time when lab IT is down. Probabilities between 0.25 and 0.75 are **flagged for human review**. |
+| **Verify** `/grounding` | The procedure as the source document, plus 22 explicit claims such as "St. Mary's Partner Lab is approved to perform crossmatch testing" | Builds the approval table. Only *supported* claims become legal routes; contradicted and not-stated ones are blocked (**fails closed**). The West Wing lab can physically run troponin, but the procedure forbids it, so the plan never sends troponin there. Edit the procedure and the plan changes. |
 
-## The demo
+### Built to be trusted
 
-The page opens with a short explanation and a three-step "How it works", then an embedded live demo. A guided tour (driver.js) points out the key moments.
+- **Human in the loop.** VitalSwitch only recommends. Nothing moves until a coordinator approves.
+- **Explainable.** For every sample, the app shows which labs were ruled out and exactly why: offline, not approved by the procedure, too slow, or kept free for a more urgent test.
+- **Uncertainty is visible.** Borderline Decide answers are flagged rather than silently trusted. A missing restoration estimate falls back to 6 hours and is labelled as assumed.
+- **Failures are handled.** Each call carries an `Idempotency-Key` and is retried a limited number of times. If a call still fails, that step falls back to a clearly labelled offline stand-in (`lib/emulator.ts`), never a silent fake.
+- **Auditable.** The **API responses** panel shows the exact Clocked JSON behind each run.
+- **Secure by design.** The API key lives only on the server (`app/api/clocked/[endpoint]`), and patient data is anonymized before analysis.
 
-1. **Normal day.** Twelve urgent samples (troponin, blood gas, crossmatch and others) flow from five wards to the Core Lab.
-2. **Launch the attack.** Pick a scenario. The Core Lab locks and the samples are stuck. The incident notice streams in, and VitalSwitch starts by itself.
-3. **Clocked reads the incident.** Five Clocked calls run in sequence (below), and then the engine compares about 1,000 legal plans in about 20 ms.
-4. **Approve.** Nothing moves until a person approves the plan.
-5. **Outcome.** The samples travel the new routes, and two timelines compare the result with the usual manual response. In the default scenario that's **4 of 12 on time without VitalSwitch and 11 of 12 with it**.
-6. **Try to break it.** Switch off any backup lab, or the courier, and the plan is rebuilt from scratch. It can honestly get worse: with St. Mary's off, the crossmatch has no approved backup and has to wait for the Core Lab.
+## The continuity engine
+
+`lib/engine.ts` is a deterministic planner. The AI interprets the text; the routing decision is made by code you can inspect.
+
+- **Simulation:** each lab is modelled with parallel analyzers, a processing time per test, and transport by tube, porter, hand delivery or courier. Paperwork time is added when the lab IT system is down. Queues serve the most urgent test first.
+- **Search:** a greedy seed ordered by urgency, then local search (moving and swapping assignments) with seeded restarts. The same inputs always give the same plan. It optimizes, in order: priority-weighted on-time results, then lateness, then courier use.
+- **A fair baseline:** "Without VitalSwitch" is a realistic manual response, not a strawman. Staff spend 25 minutes coordinating by phone, then each sample goes to the first approved lab that can run it, first come first served. It uses the same Clocked-derived constraints.
 
 | Scenario | What happens | On time, without → with |
 |---|---|---|
 | Core Lab ransomware | Main lab encrypted, backups intact | 4 → 11 |
 | Spreading outage | West Wing lab and pneumatic tube also go down | 4 → 9 |
-| Poisoned bulletin | The attacker hides routing instructions in the notice; Guard removes them | 4 → 11 |
+| Poisoned bulletin | Attacker hides routing instructions; Guard removes them | 4 → 11 |
+| Core Lab + St. Mary's down | No approved backup remains for crossmatch | 4 → 11 (crossmatch waits) |
+| Core Lab + Point-of-Care down | Fewer fast bedside analyzers | 3 → 10 |
 
-You can also write your own incident notice and downtime procedure. Clocked reads whatever you write, and the plan changes.
+## Run it yourself
 
-## How Clocked drives the app
-
-Every Clocked answer changes what the engine is allowed to do.
-
+```bash
+git clone https://github.com/Shiv-aurora/CLOCKED-BUILD-CHALLENGE.git
+cd CLOCKED-BUILD-CHALLENGE
+npm install
+cp .env.example .env.local   # set CLOCKED_API_KEY (get one at clocked.rezolve.ai/account)
+npm run dev                  # http://localhost:3000
 ```
-incident notice ─► Guard ─► Protect ─► Extract ─┐
-                                    └► Decide ──┼─► constraints ─► continuity engine ─► plan ─► human approval
-downtime procedure ─► Verify ───────────────────┘
-```
 
-| Endpoint | What we send (`lib/clocked.ts`) | How the answer is used |
-|---|---|---|
-| **Guard** `/injection` | The incident notice as `source: "content"`, with a security context for a lab-routing assistant | If it flags an injection, every paragraph containing an `evidence` span is **removed before any other step reads the notice**. In "Poisoned bulletin" that paragraph tries to mark two working labs offline and send samples to a fake lab. |
-| **Protect** `/pii` | The cleaned notice. Entities: `person`, `phone`, and a custom `medical_record_number`. `anonymize: "replace"` | Only the anonymized text goes on to Extract and Decide, so patient details stay at the intake step. |
-| **Extract** `/extract` | Fields: incident ID, issue time, restoration estimate, affected systems (list), containment action | The restoration estimate is parsed into minutes. It decides when the Core Lab comes back, which matters for any sample with no approved backup. |
-| **Decide** `/decide` | A `multiselect` over 8 criteria (5 labs, courier, pneumatic tube, lab IT system) plus a severity `score` | The selected labels switch labs off, cut courier routes, move transport to porters (tube down) and add paperwork time to every test (lab IT system down). Probabilities between 0.25 and 0.75 are flagged for human review. |
-| **Verify** `/grounding` | The downtime procedure as the source, plus one claim for every backup lab and test type the lab can physically run (22 claims) | Builds the approval table. Only `supported` routes are allowed. `contradicted` and `not_stated` are blocked, so it fails closed. The West Wing lab can physically run troponin, but the procedure forbids it, so the plan never sends troponin there. |
+Without a key, the app still runs end to end on the labelled offline stand-in.
 
-**Handling failures and uncertain results:**
-- Uncertain Decide answers are flagged for review.
-- A missing restoration estimate falls back to 6 hours and is labelled as assumed.
-- Every live call carries an `Idempotency-Key` and is retried a limited number of times.
-- If a live call still fails, that step falls back to a clearly labelled offline stand-in (`lib/emulator.ts`), so the demo never silently fakes a result.
-- The demo's **API responses** panel shows the exact JSON behind each run.
+| Command | What it does |
+|---|---|
+| `npm run test:engine` | Prints the plans and on-time counts for several outage conditions, with no API calls |
+| `npm run record` | Records real Clocked responses for the built-in scenarios (needs the app running with a key) |
+| `npm run build:artifact` | Bundles a self-contained, single-file demo that replays the recorded live responses, useful when the live API is slow |
 
-## The continuity engine (`lib/engine.ts`)
-
-- **Simulation:** each lab is simulated with parallel analyzers, a processing time per test, transport by tube, porter, hand delivery or courier, and extra paperwork time when the lab IT system is down. Queues run most-urgent-first.
-- **Search:** a greedy seed ordered by urgency, then local search (moving and swapping assignments) with seeded restarts, so the same inputs always give the same plan. It optimizes, in order: priority-weighted on-time results, then priority-weighted lateness, then courier use.
-- **Without VitalSwitch:** this is a realistic manual response, not a strawman. Staff spend 25 minutes coordinating by phone, then each sample goes to the first approved site that can run it, first come first served, with no awareness of capacity or deadlines. It uses the same Clocked-derived constraints, so the comparison is fair.
-- `npm run test:engine` prints the plans for several outage conditions without calling any API.
-
-## Static build
-
-`npm run record` saves real Clocked responses for the three built-in scenarios to `lib/recorded.json`. Run it with the app running and a key set. `npm run build:artifact` then bundles everything into one self-contained page, `dist-artifact/vitalswitch.html`, which needs no server and no key.
-
-In that build, the built-in scenarios replay the recorded live responses. A custom scenario has no recording, so it uses the labelled offline stand-in.
-
-## Project layout
+## Project structure
 
 ```
 app/page.tsx                    landing page: nav, hero, how it works, demo
-app/api/clocked/[endpoint]      server proxy to Clocked (key stays on the server), retries, fallback
-components/Landing.tsx          nav, hero, animated how-it-works panels
+app/api/clocked/[endpoint]      server proxy to Clocked: key stays server-side, retries, fallback
 components/Demo.tsx             demo flow, guided tour, approval, try-to-break-it controls
 components/HospitalMap.tsx      animated ward-to-lab diagram
+components/Landing.tsx          hero and animated how-it-works panels
 components/Gantt.tsx            side-by-side outcome timelines
 components/Pipeline.tsx         per-endpoint detail view
-lib/scenario.ts                 synthetic hospital: labs, wards, 12 tests, scenarios, procedure
-lib/clocked.ts                  request builders + interpreters (Clocked answers → constraints)
+lib/clocked.ts                  request builders and interpreters (Clocked answers → constraints)
 lib/engine.ts                   simulation, optimizer, baseline
+lib/scenario.ts                 synthetic hospital: labs, wards, 12 tests, scenarios, procedure
 lib/emulator.ts                 offline stand-in, used only without a key or after a failed call
 lib/recorded.json               recorded live responses for the static build
 ```
 
-Stack: Next.js 15, React 19, Tailwind CSS on the Geist design system, Framer Motion, driver.js. There's no database, and the engine runs in the browser, so re-planning is instant.
+**Stack:** Next.js 15, React 19, Tailwind CSS on Vercel's Geist design system, Framer Motion, driver.js for the guided tour. The planning engine runs in the browser, so re-planning is instant. There is no database.
 
 ## Limits
 
-- Clocked interprets text. Clinical priorities, deadlines, lab menus and capacities come from the synthetic scenario data. Which routes are allowed comes only from the approved procedure.
-- VitalSwitch only recommends. Every plan needs human approval, and it never touches real infrastructure.
-- The layout is built for desktop screens.
+- **Synthetic data only.** The hospital, patients, timings and procedures are fictional, and results are simulation outputs, not clinical claims.
+- **Clocked interprets text.** Clinical priorities, deadlines, lab menus and capacities come from the scenario data. Which routes are allowed comes only from the approved procedure.
+- **Recommendation, not automation.** Every plan needs human approval, and VitalSwitch never touches real infrastructure.
+- **Built for desktop screens.**
+
+Built for the Clocked Build Challenge 2026.
