@@ -12,7 +12,9 @@ Built for the Clocked Build Challenge 2026.
 
 ## Try it
 
-**Hosted demo:** https://claude.ai/artifact/UTp4KwYZWLXCJbx5JcJRaR. This static build replays real Clocked responses that were recorded with a live key, so no key is exposed. See [Static build](#static-build).
+**Live app:** https://vitalswitch-shiv-aroras-projects-083eab8d.vercel.app. Every Clocked call is live; the key is held server-side on Vercel.
+
+**Static demo:** https://claude.ai/artifact/UTp4KwYZWLXCJbx5JcJRaR. This build replays real Clocked responses that were recorded with a live key, so no key is exposed. See [Static build](#static-build).
 
 **Run it locally with live Clocked calls:**
 
